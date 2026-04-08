@@ -952,6 +952,457 @@ def _fetch_type(session, resource_type: str, region: str, config=None) -> list[d
                 })
             return items
 
+        # ---------------------------------------------------------------
+        # VPC sub-resource types
+        # ---------------------------------------------------------------
+
+        if resource_type == "Subnet":
+            ec2 = _client("ec2")
+            items = []
+            for s in ec2.describe_subnets().get("Subnets", []):
+                name = next((t["Value"] for t in s.get("Tags", []) if t["Key"] == "Name"), s["SubnetId"])
+                items.append({
+                    "id": s["SubnetId"], "name": name, "type": "Subnet",
+                    "region": s.get("AvailabilityZone", region),
+                    "status": s.get("State", "available"),
+                    "size": s.get("CidrBlock", ""),
+                    "cidr_block": s.get("CidrBlock", ""),
+                    "vpc_id": s.get("VpcId", ""),
+                    "availability_zone": s.get("AvailabilityZone", region),
+                    "available_ips": s.get("AvailableIpAddressCount"),
+                    "public": s.get("MapPublicIpOnLaunch", False),
+                    "default_for_az": s.get("DefaultForAz", False),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in s.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Route Table":
+            ec2 = _client("ec2")
+            items = []
+            for rt in ec2.describe_route_tables().get("RouteTables", []):
+                name = next((t["Value"] for t in rt.get("Tags", []) if t["Key"] == "Name"), rt["RouteTableId"])
+                assoc_subnets = [
+                    a.get("SubnetId", "") for a in rt.get("Associations", []) if a.get("SubnetId")
+                ]
+                main = any(a.get("Main", False) for a in rt.get("Associations", []))
+                items.append({
+                    "id": rt["RouteTableId"], "name": name, "type": "Route Table",
+                    "region": region, "status": "active",
+                    "size": f"{len(rt.get('Routes', []))} routes",
+                    "vpc_id": rt.get("VpcId", ""),
+                    "route_count": len(rt.get("Routes", [])),
+                    "associated_subnets": len(assoc_subnets),
+                    "main": main,
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in rt.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Internet Gateway":
+            ec2 = _client("ec2")
+            items = []
+            for igw in ec2.describe_internet_gateways().get("InternetGateways", []):
+                name = next((t["Value"] for t in igw.get("Tags", []) if t["Key"] == "Name"), igw["InternetGatewayId"])
+                attachments = igw.get("Attachments", [])
+                vpc_id = attachments[0].get("VpcId", "") if attachments else ""
+                status = attachments[0].get("State", "detached") if attachments else "detached"
+                items.append({
+                    "id": igw["InternetGatewayId"], "name": name, "type": "Internet Gateway",
+                    "region": region, "status": status,
+                    "size": "",
+                    "vpc_id": vpc_id,
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in igw.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Egress-only Internet Gateway":
+            ec2 = _client("ec2")
+            items = []
+            for eigw in ec2.describe_egress_only_internet_gateways().get("EgressOnlyInternetGateways", []):
+                name = next((t["Value"] for t in eigw.get("Tags", []) if t["Key"] == "Name"), eigw["EgressOnlyInternetGatewayId"])
+                attachments = eigw.get("Attachments", [])
+                vpc_id = attachments[0].get("VpcId", "") if attachments else ""
+                status = attachments[0].get("State", "detached") if attachments else "detached"
+                items.append({
+                    "id": eigw["EgressOnlyInternetGatewayId"], "name": name,
+                    "type": "Egress-only Internet Gateway",
+                    "region": region, "status": status,
+                    "size": "", "vpc_id": vpc_id,
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in eigw.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "DHCP Option Set":
+            ec2 = _client("ec2")
+            items = []
+            for dhcp in ec2.describe_dhcp_options().get("DhcpOptions", []):
+                name = next((t["Value"] for t in dhcp.get("Tags", []) if t["Key"] == "Name"), dhcp["DhcpOptionsId"])
+                configs = {
+                    c["Key"]: ", ".join(v.get("Value", "") for v in c.get("Values", []))
+                    for c in dhcp.get("DhcpConfigurations", [])
+                }
+                items.append({
+                    "id": dhcp["DhcpOptionsId"], "name": name, "type": "DHCP Option Set",
+                    "region": region, "status": "active", "size": "",
+                    "domain_name": configs.get("domain-name", ""),
+                    "domain_name_servers": configs.get("domain-name-servers", ""),
+                    "ntp_servers": configs.get("ntp-servers", ""),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in dhcp.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Managed Prefix List":
+            ec2 = _client("ec2")
+            items = []
+            for pl in ec2.describe_managed_prefix_lists().get("PrefixLists", []):
+                items.append({
+                    "id": pl.get("PrefixListId", ""), "name": pl.get("PrefixListName", ""),
+                    "type": "Managed Prefix List", "region": region,
+                    "status": pl.get("State", "").lower(),
+                    "size": f"{pl.get('MaxEntries', '')} max entries",
+                    "address_family": pl.get("AddressFamily", ""),
+                    "max_entries": pl.get("MaxEntries"),
+                    "owner_id": pl.get("OwnerId", ""),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in pl.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "VPC Endpoint":
+            ec2 = _client("ec2")
+            items = []
+            for ep in ec2.describe_vpc_endpoints().get("VpcEndpoints", []):
+                if ep.get("State") == "deleted":
+                    continue
+                name = next((t["Value"] for t in ep.get("Tags", []) if t["Key"] == "Name"), ep["VpcEndpointId"])
+                items.append({
+                    "id": ep["VpcEndpointId"], "name": name, "type": "VPC Endpoint",
+                    "region": region, "status": ep.get("State", "unknown"),
+                    "size": ep.get("VpcEndpointType", ""),
+                    "vpc_id": ep.get("VpcId", ""),
+                    "service_name": ep.get("ServiceName", ""),
+                    "endpoint_type": ep.get("VpcEndpointType", ""),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in ep.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "VPC Endpoint Service":
+            ec2 = _client("ec2")
+            items = []
+            for svc in ec2.describe_vpc_endpoint_services(Filters=[{"Name": "owner", "Values": ["self"]}]).get("ServiceDetails", []):
+                items.append({
+                    "id": svc.get("ServiceId", svc.get("ServiceName", "")),
+                    "name": svc.get("ServiceName", ""),
+                    "type": "VPC Endpoint Service",
+                    "region": region, "status": "available",
+                    "size": svc.get("ServiceType", [{}])[0].get("ServiceType", "") if svc.get("ServiceType") else "",
+                    "acceptance_required": svc.get("AcceptanceRequired", False),
+                    "availability_zones": ", ".join(svc.get("AvailabilityZones", [])),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in svc.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "NAT Gateway":
+            ec2 = _client("ec2")
+            items = []
+            for nat in ec2.describe_nat_gateways().get("NatGateways", []):
+                if nat.get("State") == "deleted":
+                    continue
+                name = next((t["Value"] for t in nat.get("Tags", []) if t["Key"] == "Name"), nat["NatGatewayId"])
+                nat_ips = nat.get("NatGatewayAddresses", [])
+                public_ip = nat_ips[0].get("PublicIp", "") if nat_ips else ""
+                items.append({
+                    "id": nat["NatGatewayId"], "name": name, "type": "NAT Gateway",
+                    "region": region, "status": nat.get("State", "unknown"),
+                    "size": nat.get("ConnectivityType", "public"),
+                    "vpc_id": nat.get("VpcId", ""),
+                    "subnet_id": nat.get("SubnetId", ""),
+                    "public_ip": public_ip,
+                    "connectivity_type": nat.get("ConnectivityType", "public"),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in nat.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "VPC Peering Connection":
+            ec2 = _client("ec2")
+            items = []
+            for peer in ec2.describe_vpc_peering_connections().get("VpcPeeringConnections", []):
+                if peer.get("Status", {}).get("Code") == "deleted":
+                    continue
+                name = next((t["Value"] for t in peer.get("Tags", []) if t["Key"] == "Name"), peer["VpcPeeringConnectionId"])
+                requester = peer.get("RequesterVpcInfo", {})
+                accepter = peer.get("AccepterVpcInfo", {})
+                items.append({
+                    "id": peer["VpcPeeringConnectionId"], "name": name, "type": "VPC Peering Connection",
+                    "region": region,
+                    "status": peer.get("Status", {}).get("Code", "unknown"),
+                    "size": "",
+                    "requester_vpc": requester.get("VpcId", ""),
+                    "requester_cidr": requester.get("CidrBlock", ""),
+                    "accepter_vpc": accepter.get("VpcId", ""),
+                    "accepter_cidr": accepter.get("CidrBlock", ""),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in peer.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Network ACL":
+            ec2 = _client("ec2")
+            items = []
+            for acl in ec2.describe_network_acls().get("NetworkAcls", []):
+                name = next((t["Value"] for t in acl.get("Tags", []) if t["Key"] == "Name"), acl["NetworkAclId"])
+                assoc_subnets = len(acl.get("Associations", []))
+                inbound = len([r for r in acl.get("Entries", []) if not r.get("Egress")])
+                outbound = len([r for r in acl.get("Entries", []) if r.get("Egress")])
+                items.append({
+                    "id": acl["NetworkAclId"], "name": name, "type": "Network ACL",
+                    "region": region, "status": "active",
+                    "size": f"{inbound} inbound, {outbound} outbound",
+                    "vpc_id": acl.get("VpcId", ""),
+                    "default": acl.get("IsDefault", False),
+                    "inbound_rules": inbound, "outbound_rules": outbound,
+                    "associated_subnets": assoc_subnets,
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in acl.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "DNS Firewall Rule Group":
+            r53resolver = _client("route53resolver")
+            items = []
+            for page in r53resolver.get_paginator("list_firewall_rule_groups").paginate():
+                for rg in page.get("FirewallRuleGroups", []):
+                    items.append({
+                        "id": rg["Id"], "name": rg["Name"], "type": "DNS Firewall Rule Group",
+                        "region": region, "status": rg.get("Status", "").lower(),
+                        "size": f"{rg.get('RuleCount', 0)} rules",
+                        "rule_count": rg.get("RuleCount", 0),
+                        "owner_id": rg.get("OwnerId", ""),
+                        "share_status": rg.get("ShareStatus", ""),
+                        "tags": "",
+                    })
+            return items
+
+        if resource_type == "DNS Firewall Domain List":
+            r53resolver = _client("route53resolver")
+            items = []
+            for page in r53resolver.get_paginator("list_firewall_domain_lists").paginate():
+                for dl in page.get("FirewallDomainLists", []):
+                    items.append({
+                        "id": dl["Id"], "name": dl["Name"], "type": "DNS Firewall Domain List",
+                        "region": region, "status": dl.get("Status", "").lower(),
+                        "size": f"{dl.get('DomainCount', 0)} domains",
+                        "domain_count": dl.get("DomainCount", 0),
+                        "owner_id": dl.get("OwnerId", ""),
+                        "tags": "",
+                    })
+            return items
+
+        if resource_type == "Network Firewall":
+            nfw = _client("network-firewall")
+            items = []
+            for page in nfw.get_paginator("list_firewalls").paginate():
+                for fw in page.get("Firewalls", []):
+                    items.append({
+                        "id": fw.get("FirewallArn", ""), "name": fw.get("FirewallName", ""),
+                        "type": "Network Firewall", "region": region, "status": "active",
+                        "size": "",
+                        "vpc_id": fw.get("VpcId", ""),
+                        "tags": "",
+                    })
+            return items
+
+        if resource_type == "Firewall Policy":
+            nfw = _client("network-firewall")
+            items = []
+            for page in nfw.get_paginator("list_firewall_policies").paginate():
+                for fp in page.get("FirewallPolicies", []):
+                    items.append({
+                        "id": fp.get("Arn", ""), "name": fp.get("Name", ""),
+                        "type": "Firewall Policy", "region": region, "status": "active",
+                        "size": "", "tags": "",
+                    })
+            return items
+
+        if resource_type == "Network Firewall Rule Group":
+            nfw = _client("network-firewall")
+            items = []
+            for page in nfw.get_paginator("list_rule_groups").paginate():
+                for rg in page.get("RuleGroups", []):
+                    items.append({
+                        "id": rg.get("Arn", ""), "name": rg.get("Name", ""),
+                        "type": "Network Firewall Rule Group", "region": region, "status": "active",
+                        "size": rg.get("Type", ""), "tags": "",
+                    })
+            return items
+
+        if resource_type == "TLS Inspection Configuration":
+            nfw = _client("network-firewall")
+            items = []
+            for page in nfw.get_paginator("list_tls_inspection_configurations").paginate():
+                for cfg in page.get("TLSInspectionConfigurations", []):
+                    items.append({
+                        "id": cfg.get("Arn", ""), "name": cfg.get("Name", ""),
+                        "type": "TLS Inspection Configuration", "region": region, "status": "active",
+                        "size": "", "tags": "",
+                    })
+            return items
+
+        if resource_type == "Customer Gateway":
+            ec2 = _client("ec2")
+            items = []
+            for cgw in ec2.describe_customer_gateways().get("CustomerGateways", []):
+                if cgw.get("State") == "deleted":
+                    continue
+                name = next((t["Value"] for t in cgw.get("Tags", []) if t["Key"] == "Name"), cgw["CustomerGatewayId"])
+                items.append({
+                    "id": cgw["CustomerGatewayId"], "name": name, "type": "Customer Gateway",
+                    "region": region, "status": cgw.get("State", "unknown"),
+                    "size": cgw.get("Type", ""),
+                    "ip_address": cgw.get("IpAddress", ""),
+                    "bgp_asn": cgw.get("BgpAsn", ""),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in cgw.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Virtual Private Gateway":
+            ec2 = _client("ec2")
+            items = []
+            for vgw in ec2.describe_vpn_gateways().get("VpnGateways", []):
+                if vgw.get("State") == "deleted":
+                    continue
+                name = next((t["Value"] for t in vgw.get("Tags", []) if t["Key"] == "Name"), vgw["VpnGatewayId"])
+                attached_vpcs = [a["VpcId"] for a in vgw.get("VpcAttachments", []) if a.get("State") == "attached"]
+                items.append({
+                    "id": vgw["VpnGatewayId"], "name": name, "type": "Virtual Private Gateway",
+                    "region": region, "status": vgw.get("State", "unknown"),
+                    "size": vgw.get("Type", ""),
+                    "amazon_side_asn": str(vgw.get("AmazonSideAsn", "")),
+                    "attached_vpcs": ", ".join(attached_vpcs),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in vgw.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "VPN Connection":
+            ec2 = _client("ec2")
+            items = []
+            for vpn in ec2.describe_vpn_connections().get("VpnConnections", []):
+                if vpn.get("State") == "deleted":
+                    continue
+                name = next((t["Value"] for t in vpn.get("Tags", []) if t["Key"] == "Name"), vpn["VpnConnectionId"])
+                items.append({
+                    "id": vpn["VpnConnectionId"], "name": name, "type": "VPN Connection",
+                    "region": region, "status": vpn.get("State", "unknown"),
+                    "size": vpn.get("Type", ""),
+                    "customer_gateway_id": vpn.get("CustomerGatewayId", ""),
+                    "vpn_gateway_id": vpn.get("VpnGatewayId", ""),
+                    "transit_gateway_id": vpn.get("TransitGatewayId", ""),
+                    "category": vpn.get("Category", ""),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in vpn.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Transit Gateway":
+            ec2 = _client("ec2")
+            items = []
+            for tgw in ec2.describe_transit_gateways().get("TransitGateways", []):
+                if tgw.get("State") == "deleted":
+                    continue
+                name = next((t["Value"] for t in tgw.get("Tags", []) if t["Key"] == "Name"), tgw["TransitGatewayId"])
+                items.append({
+                    "id": tgw["TransitGatewayId"], "name": name, "type": "Transit Gateway",
+                    "region": region, "status": tgw.get("State", "unknown"),
+                    "size": "",
+                    "owner_id": tgw.get("OwnerId", ""),
+                    "amazon_side_asn": str(tgw.get("Options", {}).get("AmazonSideAsn", "")),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in tgw.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Transit Gateway Attachment":
+            ec2 = _client("ec2")
+            items = []
+            for att in ec2.describe_transit_gateway_attachments().get("TransitGatewayAttachments", []):
+                if att.get("State") == "deleted":
+                    continue
+                name = next((t["Value"] for t in att.get("Tags", []) if t["Key"] == "Name"), att["TransitGatewayAttachmentId"])
+                items.append({
+                    "id": att["TransitGatewayAttachmentId"], "name": name,
+                    "type": "Transit Gateway Attachment",
+                    "region": region, "status": att.get("State", "unknown"),
+                    "size": att.get("ResourceType", ""),
+                    "transit_gateway_id": att.get("TransitGatewayId", ""),
+                    "resource_type": att.get("ResourceType", ""),
+                    "resource_id": att.get("ResourceId", ""),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in att.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Transit Gateway Route Table":
+            ec2 = _client("ec2")
+            items = []
+            for tgw_rt in ec2.describe_transit_gateway_route_tables().get("TransitGatewayRouteTables", []):
+                if tgw_rt.get("State") == "deleted":
+                    continue
+                name = next((t["Value"] for t in tgw_rt.get("Tags", []) if t["Key"] == "Name"), tgw_rt["TransitGatewayRouteTableId"])
+                items.append({
+                    "id": tgw_rt["TransitGatewayRouteTableId"], "name": name,
+                    "type": "Transit Gateway Route Table",
+                    "region": region, "status": tgw_rt.get("State", "unknown"),
+                    "size": "",
+                    "transit_gateway_id": tgw_rt.get("TransitGatewayId", ""),
+                    "default_association": tgw_rt.get("DefaultAssociationRouteTable", False),
+                    "default_propagation": tgw_rt.get("DefaultPropagationRouteTable", False),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in tgw_rt.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Mirror Session":
+            ec2 = _client("ec2")
+            items = []
+            for ms in ec2.describe_traffic_mirror_sessions().get("TrafficMirrorSessions", []):
+                name = next((t["Value"] for t in ms.get("Tags", []) if t["Key"] == "Name"), ms["TrafficMirrorSessionId"])
+                items.append({
+                    "id": ms["TrafficMirrorSessionId"], "name": name, "type": "Mirror Session",
+                    "region": region, "status": "active",
+                    "size": f"session {ms.get('SessionNumber', '')}",
+                    "traffic_mirror_target_id": ms.get("TrafficMirrorTargetId", ""),
+                    "traffic_mirror_filter_id": ms.get("TrafficMirrorFilterId", ""),
+                    "network_interface_id": ms.get("NetworkInterfaceId", ""),
+                    "session_number": ms.get("SessionNumber"),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in ms.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Mirror Target":
+            ec2 = _client("ec2")
+            items = []
+            for mt in ec2.describe_traffic_mirror_targets().get("TrafficMirrorTargets", []):
+                name = next((t["Value"] for t in mt.get("Tags", []) if t["Key"] == "Name"), mt["TrafficMirrorTargetId"])
+                items.append({
+                    "id": mt["TrafficMirrorTargetId"], "name": name, "type": "Mirror Target",
+                    "region": region, "status": "active",
+                    "size": mt.get("Type", ""),
+                    "target_type": mt.get("Type", ""),
+                    "network_interface_id": mt.get("NetworkInterfaceId", ""),
+                    "network_load_balancer_arn": mt.get("NetworkLoadBalancerArn", ""),
+                    "owner_id": mt.get("OwnerId", ""),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in mt.get("Tags", [])),
+                })
+            return items
+
+        if resource_type == "Mirror Filter":
+            ec2 = _client("ec2")
+            items = []
+            for mf in ec2.describe_traffic_mirror_filters().get("TrafficMirrorFilters", []):
+                name = next((t["Value"] for t in mf.get("Tags", []) if t["Key"] == "Name"), mf["TrafficMirrorFilterId"])
+                items.append({
+                    "id": mf["TrafficMirrorFilterId"], "name": name, "type": "Mirror Filter",
+                    "region": region, "status": "active",
+                    "size": f"{len(mf.get('IngressFilterRules', []))} ingress, {len(mf.get('EgressFilterRules', []))} egress rules",
+                    "ingress_rules": len(mf.get("IngressFilterRules", [])),
+                    "egress_rules": len(mf.get("EgressFilterRules", [])),
+                    "description": mf.get("Description", ""),
+                    "tags": ",".join(f"{t['Key']}:{t['Value']}" for t in mf.get("Tags", [])),
+                })
+            return items
+
     except Exception:
         pass
     return []
@@ -1166,13 +1617,15 @@ def get_iam_roles(credentials: dict) -> dict:
     Uses ``get_account_authorization_details`` to fetch all users, roles, and
     groups with their attached/inline policies in a single paginated scan
     (instead of N separate API calls per entity).  MFA checks for each user
-    are then executed concurrently.
+    are then executed concurrently.  Customer-managed and attached AWS-managed
+    policies are fetched in parallel.
 
     Returns a dict with:
       - ``account_id``   : the AWS account ID
       - ``users``        : list of IAM users (name, arn, mfa_enabled, groups, policies)
       - ``roles``        : list of IAM roles (name, arn, policies)
       - ``groups``       : list of IAM groups (name, arn, policies)
+      - ``policies``     : list of IAM managed policies (name, arn, type, attachment_count)
       - ``error``        : error message if the call failed (instead of the above)
     """
     if not credentials.get("access_key_id") or not credentials.get("secret_access_key"):
@@ -1211,11 +1664,52 @@ def get_iam_roles(credentials: dict) -> dict:
                 group_details.extend(page.get("GroupDetailList", []))
             return user_details, role_details, group_details
 
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        def _get_policies():
+            """Fetch customer-managed and in-use AWS-managed policies."""
+            policies: list[dict] = []
+            # Customer-managed policies
+            for page in iam.get_paginator("list_policies").paginate(Scope="Local"):
+                for p in page.get("Policies", []):
+                    create_date = p.get("CreateDate", "")
+                    update_date = p.get("UpdateDate", "")
+                    policies.append({
+                        "name": p["PolicyName"],
+                        "arn": p["Arn"],
+                        "policy_id": p.get("PolicyId", ""),
+                        "type": "Customer managed",
+                        "attachment_count": p.get("AttachmentCount", 0),
+                        "description": p.get("Description", ""),
+                        "path": p.get("Path", "/"),
+                        "default_version_id": p.get("DefaultVersionId", ""),
+                        "create_date": create_date.isoformat() if hasattr(create_date, "isoformat") else str(create_date),
+                        "update_date": update_date.isoformat() if hasattr(update_date, "isoformat") else str(update_date),
+                    })
+            # AWS-managed policies that are currently attached to at least one entity
+            for page in iam.get_paginator("list_policies").paginate(Scope="AWS", OnlyAttached=True):
+                for p in page.get("Policies", []):
+                    create_date = p.get("CreateDate", "")
+                    update_date = p.get("UpdateDate", "")
+                    policies.append({
+                        "name": p["PolicyName"],
+                        "arn": p["Arn"],
+                        "policy_id": p.get("PolicyId", ""),
+                        "type": "AWS managed",
+                        "attachment_count": p.get("AttachmentCount", 0),
+                        "description": p.get("Description", ""),
+                        "path": p.get("Path", "/"),
+                        "default_version_id": p.get("DefaultVersionId", ""),
+                        "create_date": create_date.isoformat() if hasattr(create_date, "isoformat") else str(create_date),
+                        "update_date": update_date.isoformat() if hasattr(update_date, "isoformat") else str(update_date),
+                    })
+            return policies
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
             f_acct = pool.submit(_get_account_id)
             f_details = pool.submit(_get_auth_details)
+            f_policies = pool.submit(_get_policies)
             account_id = f_acct.result()
             user_details, role_details, group_details = f_details.result()
+            policies_list = f_policies.result()
 
         # ── Check MFA for all users concurrently ───────────────────────────────
         def _has_mfa(username: str) -> bool:
@@ -1287,6 +1781,7 @@ def get_iam_roles(credentials: dict) -> dict:
             "users": users,
             "roles": roles,
             "groups": groups_list,
+            "policies": policies_list,
         }
     except Exception as exc:
         return {"error": str(exc)[:500]}
@@ -1379,6 +1874,68 @@ def _mock_iam_data() -> dict:
                 "arn": "arn:aws:iam::123456789012:group/DataTeam",
                 "policies": ["AmazonAthenaFullAccess", "AmazonS3ReadOnlyAccess"],
                 "member_count": 1,
+            },
+        ],
+        "policies": [
+            {
+                "name": "AdminPolicy",
+                "arn": "arn:aws:iam::123456789012:policy/AdminPolicy",
+                "policy_id": "ANPAI3PRZYKŁADOWY1",
+                "type": "Customer managed",
+                "attachment_count": 1,
+                "description": "Custom admin policy for internal use",
+                "path": "/",
+                "default_version_id": "v1",
+                "create_date": "2022-01-15",
+                "update_date": "2023-06-01",
+            },
+            {
+                "name": "DeveloperPolicy",
+                "arn": "arn:aws:iam::123456789012:policy/DeveloperPolicy",
+                "policy_id": "ANPAI3PRZYKŁADOWY2",
+                "type": "Customer managed",
+                "attachment_count": 2,
+                "description": "Policy granting developer access to common services",
+                "path": "/",
+                "default_version_id": "v3",
+                "create_date": "2022-03-20",
+                "update_date": "2024-01-10",
+            },
+            {
+                "name": "AdministratorAccess",
+                "arn": "arn:aws:iam::aws:policy/AdministratorAccess",
+                "policy_id": "ANPAIFIR6V6BVTRAHWINE",
+                "type": "AWS managed",
+                "attachment_count": 2,
+                "description": "Provides full access to AWS services and resources.",
+                "path": "/",
+                "default_version_id": "v1",
+                "create_date": "2015-02-06",
+                "update_date": "2015-02-06",
+            },
+            {
+                "name": "AmazonS3ReadOnlyAccess",
+                "arn": "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+                "policy_id": "ANPAIFIR6V6BVTRAHWINS3",
+                "type": "AWS managed",
+                "attachment_count": 3,
+                "description": "Provides read-only access to Amazon S3.",
+                "path": "/",
+                "default_version_id": "v2",
+                "create_date": "2015-02-06",
+                "update_date": "2021-09-27",
+            },
+            {
+                "name": "AWSLambdaFullAccess",
+                "arn": "arn:aws:iam::aws:policy/AWSLambdaFullAccess",
+                "policy_id": "ANPAIFIR6V6BVTRAHWINLAMBDA",
+                "type": "AWS managed",
+                "attachment_count": 2,
+                "description": "Provides full access to AWS Lambda.",
+                "path": "/",
+                "default_version_id": "v1",
+                "create_date": "2015-02-06",
+                "update_date": "2020-11-18",
             },
         ],
     }
