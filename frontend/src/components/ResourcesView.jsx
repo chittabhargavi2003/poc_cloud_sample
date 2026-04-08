@@ -80,6 +80,88 @@ const EC2_CATEGORIES = [
   },
 ];
 
+// VPC console-style sub-category navigation structure
+const VPC_CATEGORIES = [
+  {
+    name: 'Virtual Private Cloud',
+    icon: 'pi-sitemap',
+    color: '#667eea',
+    items: [
+      { label: 'Your VPCs', resourceType: 'VPC', description: 'Your virtual private clouds' },
+      { label: 'Subnets', resourceType: 'Subnet', description: 'Subnets within your VPCs' },
+      { label: 'Route Tables', resourceType: 'Route Table', description: 'Route tables controlling traffic' },
+      { label: 'Internet Gateways', resourceType: 'Internet Gateway', description: 'Connect VPCs to the internet' },
+      { label: 'Egress-only Internet Gateways', resourceType: 'Egress-only Internet Gateway', description: 'IPv6 egress-only internet access' },
+      { label: 'DHCP Option Sets', resourceType: 'DHCP Option Set', description: 'DHCP configuration for VPCs' },
+      { label: 'Elastic IPs', resourceType: 'Elastic IP', description: 'Static public IPv4 addresses' },
+      { label: 'Managed Prefix Lists', resourceType: 'Managed Prefix List', description: 'Sets of IP address ranges' },
+      { label: 'Endpoints', resourceType: 'VPC Endpoint', description: 'Private connections to AWS services' },
+      { label: 'Endpoint Services', resourceType: 'VPC Endpoint Service', description: 'Your PrivateLink endpoint services' },
+      { label: 'NAT Gateways', resourceType: 'NAT Gateway', description: 'Enable outbound internet for private subnets' },
+      { label: 'Peering Connections', resourceType: 'VPC Peering Connection', description: 'VPC-to-VPC routing connections' },
+    ],
+  },
+  {
+    name: 'Security',
+    icon: 'pi-shield',
+    color: '#43e97b',
+    items: [
+      { label: 'Network ACLs', resourceType: 'Network ACL', description: 'Stateless subnet-level firewall rules' },
+      { label: 'Security Groups', resourceType: 'Security Group', description: 'Stateful instance-level firewall rules' },
+    ],
+  },
+  {
+    name: 'DNS Firewall',
+    icon: 'pi-ban',
+    color: '#f093fb',
+    items: [
+      { label: 'Rule Groups', resourceType: 'DNS Firewall Rule Group', description: 'DNS query filtering rule groups' },
+      { label: 'Domain Lists', resourceType: 'DNS Firewall Domain List', description: 'Lists of domains for DNS filtering' },
+    ],
+  },
+  {
+    name: 'Network Firewall',
+    icon: 'pi-lock',
+    color: '#fa709a',
+    items: [
+      { label: 'Firewalls', resourceType: 'Network Firewall', description: 'Stateful network traffic inspection' },
+      { label: 'Firewall Policies', resourceType: 'Firewall Policy', description: 'Rules and settings for firewalls' },
+      { label: 'Rule Groups', resourceType: 'Network Firewall Rule Group', description: 'Reusable sets of firewall rules' },
+      { label: 'TLS Inspection Configurations', resourceType: 'TLS Inspection Configuration', description: 'TLS traffic decryption configurations' },
+    ],
+  },
+  {
+    name: 'Virtual Private Network (VPN)',
+    icon: 'pi-key',
+    color: '#4facfe',
+    items: [
+      { label: 'Customer Gateways', resourceType: 'Customer Gateway', description: 'Your on-premises VPN devices' },
+      { label: 'Virtual Private Gateways', resourceType: 'Virtual Private Gateway', description: 'AWS side of Site-to-Site VPN' },
+      { label: 'Site-to-Site VPN Connections', resourceType: 'VPN Connection', description: 'Encrypted tunnels to on-premises' },
+    ],
+  },
+  {
+    name: 'Transit Gateways',
+    icon: 'pi-share-alt',
+    color: '#fda085',
+    items: [
+      { label: 'Transit Gateways', resourceType: 'Transit Gateway', description: 'Central hub for VPC and on-premises routing' },
+      { label: 'Transit Gateway Attachments', resourceType: 'Transit Gateway Attachment', description: 'VPCs and VPNs attached to transit gateways' },
+      { label: 'Transit Gateway Route Tables', resourceType: 'Transit Gateway Route Table', description: 'Routing tables for transit gateways' },
+    ],
+  },
+  {
+    name: 'Traffic Mirroring',
+    icon: 'pi-eye',
+    color: '#a18cd1',
+    items: [
+      { label: 'Mirror Sessions', resourceType: 'Mirror Session', description: 'Sessions that capture and mirror traffic' },
+      { label: 'Mirror Targets', resourceType: 'Mirror Target', description: 'Destinations for mirrored traffic' },
+      { label: 'Mirror Filters', resourceType: 'Mirror Filter', description: 'Filters controlling mirrored traffic' },
+    ],
+  },
+];
+
 const TYPE_ICON = {
   EC2: 'pi-server', S3: 'pi-database', RDS: 'pi-database', Lambda: 'pi-bolt',
   ElastiCache: 'pi-refresh', OpenSearch: 'pi-search', SQS: 'pi-send',
@@ -101,6 +183,21 @@ const TYPE_ICON = {
   'Key Pair': 'pi-key', 'Network Interface': 'pi-sitemap',
   'Placement Group': 'pi-th-large', 'Target Group': 'pi-list',
   'Auto Scaling Group': 'pi-sort-alt',
+  // VPC sub-resources
+  Subnet: 'pi-sitemap', 'Route Table': 'pi-directions',
+  'Internet Gateway': 'pi-globe', 'Egress-only Internet Gateway': 'pi-arrow-up',
+  'DHCP Option Set': 'pi-cog', 'Managed Prefix List': 'pi-list',
+  'VPC Endpoint': 'pi-link', 'VPC Endpoint Service': 'pi-link',
+  'NAT Gateway': 'pi-arrow-right-arrow-left', 'VPC Peering Connection': 'pi-share-alt',
+  'Network ACL': 'pi-shield',
+  'DNS Firewall Rule Group': 'pi-ban', 'DNS Firewall Domain List': 'pi-globe',
+  'Network Firewall': 'pi-lock', 'Firewall Policy': 'pi-file',
+  'Network Firewall Rule Group': 'pi-list', 'TLS Inspection Configuration': 'pi-lock',
+  'Customer Gateway': 'pi-server', 'Virtual Private Gateway': 'pi-cloud',
+  'VPN Connection': 'pi-key',
+  'Transit Gateway': 'pi-share-alt', 'Transit Gateway Attachment': 'pi-sitemap',
+  'Transit Gateway Route Table': 'pi-directions',
+  'Mirror Session': 'pi-eye', 'Mirror Target': 'pi-bullseye', 'Mirror Filter': 'pi-filter',
   // GCP / Azure
   'Compute Engine': 'pi-server', 'Cloud Storage': 'pi-database',
   BigQuery: 'pi-chart-bar', 'Cloud SQL': 'pi-database', GKE: 'pi-sitemap',
@@ -968,11 +1065,22 @@ const AWS_REGIONS = [
   { label: 'Europe (Frankfurt) — eu-central-1', value: 'eu-central-1' },
   { label: 'Europe (Paris) — eu-west-3', value: 'eu-west-3' },
   { label: 'Europe (Stockholm) — eu-north-1', value: 'eu-north-1' },
+  { label: 'Europe (Spain) — eu-south-2', value: 'eu-south-2' },
+  { label: 'Europe (Milan) — eu-south-1', value: 'eu-south-1' },
+  { label: 'Europe (Zurich) — eu-central-2', value: 'eu-central-2' },
+  { label: 'Mexico (Mexico City) — mx-central-1', value: 'mx-central-1' },
   { label: 'Asia Pacific (Tokyo) — ap-northeast-1', value: 'ap-northeast-1' },
   { label: 'Asia Pacific (Seoul) — ap-northeast-2', value: 'ap-northeast-2' },
+  { label: 'Asia Pacific (Osaka) — ap-northeast-3', value: 'ap-northeast-3' },
   { label: 'Asia Pacific (Singapore) — ap-southeast-1', value: 'ap-southeast-1' },
   { label: 'Asia Pacific (Sydney) — ap-southeast-2', value: 'ap-southeast-2' },
   { label: 'Asia Pacific (Mumbai) — ap-south-1', value: 'ap-south-1' },
+  { label: 'Asia Pacific (Hyderabad) — ap-south-2', value: 'ap-south-2' },
+  { label: 'Asia Pacific (Malaysia) — ap-southeast-5', value: 'ap-southeast-5' },
+  { label: 'Asia Pacific (Thailand) — ap-southeast-7', value: 'ap-southeast-7' },
+  { label: 'Middle East (UAE) — me-central-1', value: 'me-central-1' },
+  { label: 'Middle East (Bahrain) — me-south-1', value: 'me-south-1' },
+  { label: 'Africa (Cape Town) — af-south-1', value: 'af-south-1' },
   { label: 'South America (São Paulo) — sa-east-1', value: 'sa-east-1' },
 ];
 
@@ -1303,6 +1411,19 @@ const EC2_RESOURCE_TYPES = new Set([
   'ELB', 'Target Group', 'Auto Scaling Group',
 ]);
 
+// All resource types that belong to the VPC console category
+const VPC_RESOURCE_TYPES = new Set([
+  'VPC', 'Subnet', 'Route Table', 'Internet Gateway', 'Egress-only Internet Gateway',
+  'DHCP Option Set', 'Managed Prefix List', 'VPC Endpoint', 'VPC Endpoint Service',
+  'NAT Gateway', 'VPC Peering Connection',
+  'Network ACL', 'Security Group',
+  'DNS Firewall Rule Group', 'DNS Firewall Domain List',
+  'Network Firewall', 'Firewall Policy', 'Network Firewall Rule Group', 'TLS Inspection Configuration',
+  'Customer Gateway', 'Virtual Private Gateway', 'VPN Connection',
+  'Transit Gateway', 'Transit Gateway Attachment', 'Transit Gateway Route Table',
+  'Mirror Session', 'Mirror Target', 'Mirror Filter',
+]);
+
 function AwsResourcesView() {
   const toast = useRef(null);
   const [summary, setSummary] = useState([]);
@@ -1367,6 +1488,11 @@ function AwsResourcesView() {
       setSelectedService('EC2_PANEL');
       return;
     }
+    // VPC opens the sub-category navigation panel instead of a resource table
+    if (serviceType === 'VPC') {
+      setSelectedService('VPC_PANEL');
+      return;
+    }
     loadResources(serviceType);
   }, [loadResources]);
 
@@ -1377,9 +1503,23 @@ function AwsResourcesView() {
     loadResources(resourceType);
   }, [loadResources]);
 
+  // Used by VPC panel sub-items — loads resources directly.
+  const handleVpcItemClick = useCallback((resourceType) => {
+    loadResources(resourceType);
+  }, [loadResources]);
+
   const handleBack = useCallback(() => {
-    // If viewing an EC2 sub-resource, go back to EC2 panel; otherwise go to service cards
-    resetDrillDown(EC2_RESOURCE_TYPES.has(selectedService) ? 'EC2_PANEL' : null);
+    // If viewing an EC2 sub-resource, go back to EC2 panel
+    if (EC2_RESOURCE_TYPES.has(selectedService)) {
+      resetDrillDown('EC2_PANEL');
+      return;
+    }
+    // If viewing a VPC sub-resource, go back to VPC panel
+    if (VPC_RESOURCE_TYPES.has(selectedService) && selectedService !== 'VPC') {
+      resetDrillDown('VPC_PANEL');
+      return;
+    }
+    resetDrillDown(null);
   }, [selectedService, resetDrillDown]);
 
   const handleBackToServices = useCallback(() => {
@@ -1502,9 +1642,110 @@ function AwsResourcesView() {
     );
   }
 
+  // --- VPC sub-category panel ---
+  if (selectedService === 'VPC_PANEL') {
+    return (
+      <div className="flex flex-column gap-4">
+        <Toast ref={toast} />
+        <div className="flex align-items-center gap-2">
+          <Button
+            icon="pi pi-arrow-left"
+            label="Back to Services"
+            className="p-button-text"
+            onClick={handleBackToServices}
+            style={{ color: '#a5b4fc' }}
+          />
+          <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
+            <i className="pi pi-sitemap mr-1" style={{ color: '#667eea' }} />
+            VPC Dashboard
+          </span>
+        </div>
+
+        {/* Region selector */}
+        <div className="flex align-items-center gap-2">
+          <i className="pi pi-map-marker" style={{ color: '#94a3b8' }} />
+          <Dropdown
+            value={selectedRegion}
+            options={AWS_REGIONS}
+            onChange={(e) => setSelectedRegion(e.value)}
+            placeholder="Select a region…"
+            filter
+            filterPlaceholder="Search regions…"
+            style={{ minWidth: '260px' }}
+          />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem' }}>
+          {VPC_CATEGORIES.map((category) => (
+            <div key={category.name} style={{
+              background: '#1e293b',
+              border: `1px solid ${category.color}44`,
+              borderRadius: '14px',
+              padding: '1.25rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+            }}>
+              {/* Category header */}
+              <div className="flex align-items-center gap-2">
+                <div style={{
+                  width: '32px', height: '32px', borderRadius: '8px',
+                  background: `${category.color}22`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <i className={`pi ${category.icon}`} style={{ color: category.color, fontSize: '1rem' }} />
+                </div>
+                <span className="font-semibold" style={{ color: '#f1f5f9', fontSize: '0.95rem' }}>
+                  {category.name}
+                </span>
+              </div>
+              {/* Sub-items */}
+              <div className="flex flex-column gap-1">
+                {category.items.map((item) => (
+                  <div
+                    key={item.resourceType}
+                    onClick={() => handleVpcItemClick(item.resourceType)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '0.5rem 0.75rem',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: '#0f172a',
+                      border: '1px solid #1e293b',
+                      transition: 'border-color 0.15s, background 0.15s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = category.color;
+                      e.currentTarget.style.background = `${category.color}11`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#1e293b';
+                      e.currentTarget.style.background = '#0f172a';
+                    }}
+                  >
+                    <div>
+                      <div className="font-medium" style={{ color: '#e2e8f0', fontSize: '0.875rem' }}>
+                        {item.label}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '1px' }}>
+                        {item.description}
+                      </div>
+                    </div>
+                    <i className="pi pi-chevron-right" style={{ color: '#475569', fontSize: '0.75rem' }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   // --- Drill-down: resources for a specific service ---
   if (selectedService) {
     const isEc2SubResource = EC2_RESOURCE_TYPES.has(selectedService);
+    const isVpcSubResource = VPC_RESOURCE_TYPES.has(selectedService) && selectedService !== 'VPC';
     const tableHeader = (
       <div className="flex justify-content-between align-items-center flex-wrap gap-3"
            style={{ background: '#1e293b', padding: '0.75rem 1rem' }}>
@@ -1531,7 +1772,7 @@ function AwsResourcesView() {
     const hasExpansion = isVpc || isEc2;
 
     // Determine breadcrumb label for back button
-    const backLabel = isEc2SubResource ? 'Back to EC2' : 'Back to Services';
+    const backLabel = isEc2SubResource ? 'Back to EC2' : isVpcSubResource ? 'Back to VPC' : 'Back to Services';
 
     return (
       <div className="flex flex-column gap-4">
@@ -1613,8 +1854,11 @@ function AwsResourcesView() {
 
   // --- Overview: service cards grid with search bar ---
   const searchLower = serviceSearch.trim().toLowerCase();
-  // Filter out EC2 sub-types from the top-level cards (they appear inside the EC2 panel)
-  const topLevelSummary = summary.filter((s) => !EC2_RESOURCE_TYPES.has(s.type) || s.type === 'EC2');
+  // Filter out EC2 and VPC sub-types from the top-level cards (they appear inside the respective panels)
+  const topLevelSummary = summary.filter((s) =>
+    (!EC2_RESOURCE_TYPES.has(s.type) || s.type === 'EC2') &&
+    (!VPC_RESOURCE_TYPES.has(s.type) || s.type === 'VPC')
+  );
   const filteredSummary = searchLower
     ? topLevelSummary.filter((s) => s.type.toLowerCase().includes(searchLower))
     : topLevelSummary;
@@ -1670,13 +1914,15 @@ function AwsResourcesView() {
             const colorIdx = svc.type.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % TYPE_COLORS.length;
             const color = TYPE_COLORS[colorIdx];
             const isEc2Card = svc.type === 'EC2';
+            const isVpcCard = svc.type === 'VPC';
+            const isPanelCard = isEc2Card || isVpcCard;
             return (
               <div
                 key={svc.type}
                 onClick={() => handleServiceClick(svc.type)}
                 style={{
                   background: '#1e293b',
-                  border: isEc2Card ? `1px solid ${color}66` : '1px solid #334155',
+                  border: isPanelCard ? `1px solid ${color}66` : '1px solid #334155',
                   borderRadius: '14px',
                   padding: '1.2rem 1rem',
                   cursor: 'pointer',
@@ -1690,7 +1936,7 @@ function AwsResourcesView() {
                   e.currentTarget.style.transform = 'translateY(-2px)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = isEc2Card ? `${color}66` : '#334155';
+                  e.currentTarget.style.borderColor = isPanelCard ? `${color}66` : '#334155';
                   e.currentTarget.style.transform = 'translateY(0)';
                 }}
               >
@@ -1708,7 +1954,7 @@ function AwsResourcesView() {
                 </div>
                 <div className="flex align-items-center justify-content-between">
                   <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>
-                    {isEc2Card ? 'Explore' : 'Resources'}
+                    {isPanelCard ? 'Explore' : 'Resources'}
                   </span>
                   {isEc2Card ? (
                     <span style={{
@@ -1717,6 +1963,14 @@ function AwsResourcesView() {
                       fontSize: '0.78rem', fontWeight: 600,
                     }}>
                       {EC2_CATEGORIES.length} categories
+                    </span>
+                  ) : isVpcCard ? (
+                    <span style={{
+                      background: `${color}33`, color,
+                      borderRadius: '20px', padding: '2px 10px',
+                      fontSize: '0.78rem', fontWeight: 600,
+                    }}>
+                      {VPC_CATEGORIES.length} categories
                     </span>
                   ) : (
                     <span style={{

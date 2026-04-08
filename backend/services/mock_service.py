@@ -402,6 +402,16 @@ AWS_RESOURCE_TYPES = [
     "AMI", "EBS Volume", "EBS Snapshot", "Security Group", "Elastic IP",
     "Key Pair", "Network Interface", "Placement Group", "Target Group",
     "Auto Scaling Group",
+    # VPC sub-resources
+    "Subnet", "Route Table", "Internet Gateway", "Egress-only Internet Gateway",
+    "DHCP Option Set", "Managed Prefix List", "VPC Endpoint", "VPC Endpoint Service",
+    "NAT Gateway", "VPC Peering Connection", "Network ACL",
+    "DNS Firewall Rule Group", "DNS Firewall Domain List",
+    "Network Firewall", "Firewall Policy", "Network Firewall Rule Group",
+    "TLS Inspection Configuration",
+    "Customer Gateway", "Virtual Private Gateway", "VPN Connection",
+    "Transit Gateway", "Transit Gateway Attachment", "Transit Gateway Route Table",
+    "Mirror Session", "Mirror Target", "Mirror Filter",
 ]
 
 AWS_BILLING_BASE = {

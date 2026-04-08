@@ -109,7 +109,7 @@ export default function AwsIamView() {
     );
   }
 
-  const { account_id, users = [], roles = [], groups = [] } = data || {};
+  const { account_id, users = [], roles = [], groups = [], policies = [] } = data || {};
 
   return (
     <div className="mt-3">
@@ -138,6 +138,7 @@ export default function AwsIamView() {
               { label: 'Users', count: users.length, icon: 'pi-user', color: '#60a5fa' },
               { label: 'Roles', count: roles.length, icon: 'pi-cog', color: '#a78bfa' },
               { label: 'Groups', count: groups.length, icon: 'pi-users', color: '#34d399' },
+              { label: 'Policies', count: policies.length, icon: 'pi-file', color: '#fb923c' },
             ].map(({ label, count, icon, color }) => (
               <div
                 key={label}
@@ -286,6 +287,7 @@ export default function AwsIamView() {
 
       {/* Groups table */}
       <Card
+        className="mb-4"
         style={{ background: '#1e293b', border: '1px solid #334155' }}
       >
         <div className="font-bold text-lg mb-3" style={{ color: '#f1f5f9' }}>
@@ -327,6 +329,95 @@ export default function AwsIamView() {
             header="Attached Policies"
             style={{ minWidth: '280px' }}
             body={(row) => <PoliciesCell policies={row.policies} />}
+          />
+        </DataTable>
+      </Card>
+
+      {/* Policies table */}
+      <Card
+        style={{ background: '#1e293b', border: '1px solid #334155' }}
+      >
+        <div className="font-bold text-lg mb-3" style={{ color: '#f1f5f9' }}>
+          <i className="pi pi-file mr-2" style={{ color: '#fb923c' }} />
+          IAM Policies ({policies.length})
+        </div>
+        <DataTable
+          value={policies}
+          paginator
+          rows={15}
+          rowsPerPageOptions={[15, 30, 50]}
+          emptyMessage="No IAM policies found."
+          style={{ background: '#1e293b' }}
+          className="p-datatable-sm"
+          stripedRows
+          sortField="name"
+          sortOrder={1}
+        >
+          <Column
+            field="name"
+            header="Policy Name"
+            sortable
+            style={{ minWidth: '200px' }}
+            body={(row) => (
+              <div className="flex align-items-center gap-2">
+                <i className="pi pi-file" style={{ color: '#fb923c', fontSize: '0.9rem' }} />
+                <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                  {row.name}
+                </span>
+              </div>
+            )}
+          />
+          <Column
+            field="type"
+            header="Type"
+            sortable
+            style={{ width: '160px' }}
+            body={(row) => (
+              <Tag
+                value={row.type}
+                severity={row.type === 'Customer managed' ? 'info' : 'secondary'}
+              />
+            )}
+          />
+          <Column
+            field="attachment_count"
+            header="Attachments"
+            sortable
+            style={{ width: '120px', textAlign: 'center' }}
+            body={(row) => (
+              <Tag value={row.attachment_count} severity={row.attachment_count > 0 ? 'success' : 'secondary'} />
+            )}
+          />
+          <Column
+            field="description"
+            header="Description"
+            style={{ minWidth: '220px' }}
+            body={(row) => (
+              <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                {row.description || '—'}
+              </span>
+            )}
+          />
+          <Column
+            field="default_version_id"
+            header="Version"
+            style={{ width: '90px' }}
+            body={(row) => (
+              <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                {row.default_version_id || '—'}
+              </span>
+            )}
+          />
+          <Column
+            field="update_date"
+            header="Last Updated"
+            sortable
+            style={{ width: '140px' }}
+            body={(row) => (
+              <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                {row.update_date ? String(row.update_date).split('T')[0] : '—'}
+              </span>
+            )}
           />
         </DataTable>
       </Card>
