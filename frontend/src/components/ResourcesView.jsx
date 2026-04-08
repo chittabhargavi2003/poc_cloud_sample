@@ -1,0 +1,2003 @@
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { InputText } from 'primereact/inputtext';
+import { Tag } from 'primereact/tag';
+import { ProgressSpinner } from 'primereact/progressspinner';
+import { Message } from 'primereact/message';
+import { MultiSelect } from 'primereact/multiselect';
+import { Dropdown } from 'primereact/dropdown';
+import { Button } from 'primereact/button';
+import { Card } from 'primereact/card';
+import { Badge } from 'primereact/badge';
+import { Toast } from 'primereact/toast';
+import { getResources, getResourceTypes, getResourceSummary } from '../api/cloudApi';
+
+const STATUS_SEVERITY = {
+  running: 'success', active: 'success', available: 'success',
+  completed: 'success', 'in-use': 'success',
+  RUNNING: 'success', ACTIVE: 'success', RUNNABLE: 'success', Online: 'success', Available: 'success',
+  stopped: 'warning', STOPPED: 'warning', Stopped: 'warning', TERMINATED: 'warning',
+  unassociated: 'warning', pending: 'warning',
+  error: 'danger', ERROR: 'danger', failed: 'danger',
+};
+
+// EC2 console-style sub-category navigation structure
+const EC2_CATEGORIES = [
+  {
+    name: 'Instances',
+    icon: 'pi-server',
+    color: '#667eea',
+    items: [
+      { label: 'Instances', resourceType: 'EC2', description: 'Running and stopped EC2 instances' },
+    ],
+  },
+  {
+    name: 'Images',
+    icon: 'pi-copy',
+    color: '#4facfe',
+    items: [
+      { label: 'AMIs', resourceType: 'AMI', description: 'Amazon Machine Images owned by you' },
+    ],
+  },
+  {
+    name: 'Elastic Block Store',
+    icon: 'pi-database',
+    color: '#f093fb',
+    items: [
+      { label: 'Volumes', resourceType: 'EBS Volume', description: 'EBS block storage volumes' },
+      { label: 'Snapshots', resourceType: 'EBS Snapshot', description: 'Point-in-time volume snapshots' },
+    ],
+  },
+  {
+    name: 'Network & Security',
+    icon: 'pi-shield',
+    color: '#43e97b',
+    items: [
+      { label: 'Security Groups', resourceType: 'Security Group', description: 'Virtual firewalls for instances' },
+      { label: 'Elastic IPs', resourceType: 'Elastic IP', description: 'Static public IPv4 addresses' },
+      { label: 'Placement Groups', resourceType: 'Placement Group', description: 'Logical groupings for instances' },
+      { label: 'Key Pairs', resourceType: 'Key Pair', description: 'SSH key pairs for EC2 access' },
+      { label: 'Network Interfaces', resourceType: 'Network Interface', description: 'Virtual network cards (ENIs)' },
+    ],
+  },
+  {
+    name: 'Load Balancing',
+    icon: 'pi-sliders-h',
+    color: '#fa709a',
+    items: [
+      { label: 'Load Balancers', resourceType: 'ELB', description: 'Application, Network, and Classic LBs' },
+      { label: 'Target Groups', resourceType: 'Target Group', description: 'Routing targets for load balancers' },
+    ],
+  },
+  {
+    name: 'Auto Scaling',
+    icon: 'pi-sort-alt',
+    color: '#fda085',
+    items: [
+      { label: 'Auto Scaling Groups', resourceType: 'Auto Scaling Group', description: 'Automatically manage EC2 capacity' },
+    ],
+  },
+];
+
+const TYPE_ICON = {
+  EC2: 'pi-server', S3: 'pi-database', RDS: 'pi-database', Lambda: 'pi-bolt',
+  ElastiCache: 'pi-refresh', OpenSearch: 'pi-search', SQS: 'pi-send',
+  SNS: 'pi-bell', DynamoDB: 'pi-table', ECS: 'pi-server', EKS: 'pi-sitemap',
+  ELB: 'pi-sliders-h', VPC: 'pi-sitemap', CloudWatch: 'pi-chart-line',
+  MSK: 'pi-share-alt', Glue: 'pi-directions', Athena: 'pi-search',
+  'API Gateway': 'pi-link', 'Route 53': 'pi-globe',
+  CloudFormation: 'pi-clone', CloudTrail: 'pi-history',
+  KMS: 'pi-key', 'Secrets Manager': 'pi-lock', Cognito: 'pi-users',
+  ECR: 'pi-box', 'ECR Public': 'pi-globe', 'Step Functions': 'pi-directions',
+  EFS: 'pi-folder', SES: 'pi-envelope', WAF: 'pi-shield',
+  CodeBuild: 'pi-cog', CodePipeline: 'pi-sort-alt',
+  QuickSight: 'pi-chart-bar', Inspector: 'pi-eye', 'X-Ray': 'pi-sitemap',
+  'Transfer Family': 'pi-upload', EventBridge: 'pi-calendar',
+  'Location Service': 'pi-map-marker',
+  // EC2 sub-resources
+  AMI: 'pi-copy', 'EBS Volume': 'pi-database', 'EBS Snapshot': 'pi-camera',
+  'Security Group': 'pi-shield', 'Elastic IP': 'pi-map-marker',
+  'Key Pair': 'pi-key', 'Network Interface': 'pi-sitemap',
+  'Placement Group': 'pi-th-large', 'Target Group': 'pi-list',
+  'Auto Scaling Group': 'pi-sort-alt',
+  // GCP / Azure
+  'Compute Engine': 'pi-server', 'Cloud Storage': 'pi-database',
+  BigQuery: 'pi-chart-bar', 'Cloud SQL': 'pi-database', GKE: 'pi-sitemap',
+  'Cloud Functions': 'pi-bolt', 'Pub/Sub': 'pi-send', 'Cloud CDN': 'pi-globe',
+  'Virtual Machines': 'pi-server', 'Storage Accounts': 'pi-database',
+  'SQL Database': 'pi-database', 'Azure Functions': 'pi-bolt',
+  AKS: 'pi-sitemap', 'Cosmos DB': 'pi-database',
+  'Azure Cache for Redis': 'pi-refresh', 'Service Bus': 'pi-send',
+  'Application Insights': 'pi-chart-line',
+};
+
+const TYPE_COLORS = [
+  '#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a',
+  '#a18cd1', '#fda085', '#30cfd0', '#a1c4fd', '#c4b5fd',
+];
+
+function statusTemplate(rowData) {
+  const sev = STATUS_SEVERITY[rowData.status] || 'info';
+  return <Tag value={rowData.status} severity={sev} rounded />;
+}
+
+function typeTemplate(rowData) {
+  const icon = TYPE_ICON[rowData.type] || 'pi-box';
+  return (
+    <span className="flex align-items-center gap-2">
+      <i className={`pi ${icon}`} style={{ color: '#818cf8' }} />
+      <span className="font-medium">{rowData.type}</span>
+    </span>
+  );
+}
+
+function tagsTemplate(rowData) {
+  if (!rowData.tags) return null;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {rowData.tags.split(',').filter(Boolean).map((t) => (
+        <span key={t} className="text-xs px-2 py-1"
+          style={{ background: '#1e3a5f', borderRadius: '12px', color: '#93c5fd', fontFamily: 'monospace' }}>
+          {t.trim()}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function detailsTemplate(rowData) {
+  const fields = getDetailFields(rowData);
+  if (!fields || fields.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {fields.map(({ label, value }) =>
+        value !== null && value !== undefined && value !== '' ? (
+          <span key={label} style={{
+            background: '#0f2e4a', borderRadius: '8px', padding: '2px 8px',
+            fontSize: '0.76rem', color: '#93c5fd', whiteSpace: 'nowrap',
+          }}>
+            <span style={{ color: '#64748b' }}>{label}:</span>{' '}
+            <span style={{ color: '#e2e8f0' }}>{String(value)}</span>
+          </span>
+        ) : null
+      )}
+    </div>
+  );
+}
+
+function getDetailFields(rowData) {
+  switch (rowData.type) {
+    case 'EC2':
+      return [
+        { label: 'Instance Type', value: rowData.instance_type || rowData.size },
+        { label: 'AMI', value: rowData.ami_id },
+        { label: 'Platform', value: rowData.platform },
+        { label: 'Architecture', value: rowData.architecture },
+        { label: 'AZ', value: rowData.availability_zone },
+        { label: 'VPC', value: rowData.vpc_id },
+        { label: 'Subnet', value: rowData.subnet_id },
+        { label: 'Private IP', value: rowData.private_ip },
+        { label: 'Public IP', value: rowData.public_ip },
+        { label: 'Key Pair', value: rowData.key_name },
+        { label: 'IAM Role', value: rowData.iam_role },
+        { label: 'Monitoring', value: rowData.monitoring_state },
+      ];
+    case 'VPC':
+      return [
+        { label: 'VPC ID', value: rowData.id },
+        { label: 'CIDR', value: rowData.cidr_block || rowData.size },
+        { label: 'Default', value: rowData.is_default ? 'Yes' : null },
+        { label: 'Subnets', value: rowData.subnet_count != null ? rowData.subnet_count : null },
+        { label: 'NAT GWs', value: rowData.nat_gateway_count != null ? rowData.nat_gateway_count : null },
+        { label: 'IGWs', value: rowData.igw_count != null ? rowData.igw_count : null },
+        { label: 'EC2 Instances', value: rowData.ec2_instance_count != null ? rowData.ec2_instance_count : null },
+      ];
+    case 'S3':
+      return [
+        { label: 'Storage', value: rowData.storage_size || rowData.size },
+      ];
+    case 'RDS':
+      return [
+        { label: 'Class', value: rowData.instance_class },
+        { label: 'Engine', value: rowData.engine },
+        { label: 'Version', value: rowData.engine_version },
+        { label: 'Multi-AZ', value: rowData.multi_az ? 'Yes' : rowData.multi_az === false ? 'No' : null },
+        { label: 'Storage', value: rowData.size },
+      ];
+    case 'Lambda':
+      return [
+        { label: 'Runtime', value: rowData.runtime },
+        { label: 'Memory', value: rowData.size },
+        { label: 'Timeout', value: rowData.timeout ? `${rowData.timeout}s` : null },
+      ];
+    case 'ElastiCache':
+      return [
+        { label: 'Node Type', value: rowData.size },
+        { label: 'Engine', value: rowData.engine },
+        { label: 'Version', value: rowData.engine_version },
+        { label: 'Nodes', value: rowData.num_nodes },
+      ];
+    case 'OpenSearch':
+      return [
+        { label: 'Instance Type', value: rowData.instance_type },
+        { label: 'Instances', value: rowData.instance_count },
+        { label: 'Engine', value: rowData.engine_version },
+      ];
+    case 'DynamoDB':
+      return [
+        { label: 'Size', value: rowData.size },
+        { label: 'Item Count', value: rowData.item_count != null ? rowData.item_count.toLocaleString() : null },
+        { label: 'Billing', value: rowData.billing_mode },
+      ];
+    case 'ECS':
+      return [
+        { label: 'Running Tasks', value: rowData.running_tasks_count },
+        { label: 'Active Services', value: rowData.active_services_count },
+      ];
+    case 'EKS':
+      return [
+        { label: 'K8s Version', value: rowData.kubernetes_version },
+        { label: 'Nodes', value: rowData.node_count },
+        { label: 'Node Groups', value: rowData.node_groups },
+      ];
+    case 'ELB':
+      return [
+        { label: 'Type', value: rowData.lb_type },
+        { label: 'Scheme', value: rowData.scheme },
+      ];
+    case 'MSK':
+      return [
+        { label: 'Brokers', value: rowData.broker_count },
+        { label: 'Instance Type', value: rowData.broker_instance_type },
+        { label: 'Kafka Version', value: rowData.kafka_version },
+      ];
+    case 'Glue':
+      return [
+        { label: 'Worker Type', value: rowData.worker_type },
+        { label: 'Max Workers', value: rowData.max_workers },
+      ];
+    case 'ECR':
+      return [
+        { label: 'Images', value: rowData.image_count },
+        { label: 'URI', value: rowData.repository_uri },
+      ];
+    case 'EFS':
+      return [
+        { label: 'Size', value: rowData.size },
+      ];
+    // GCP resource types
+    case 'Compute Engine':
+      return [
+        { label: 'Machine Type', value: rowData.machine_type },
+        { label: 'Zone', value: rowData.zone },
+        { label: 'CPU Platform', value: rowData.cpu_platform },
+        { label: 'Min CPU Platform', value: rowData.min_cpu_platform },
+        { label: 'Boot Disk', value: rowData.boot_disk_name },
+        { label: 'Boot Disk Size (GB)', value: rowData.boot_disk_size_gb },
+        { label: 'Boot Disk Type', value: rowData.boot_disk_type },
+        { label: 'Disk Count', value: rowData.disk_count },
+        { label: 'Attached Disks', value: rowData.attached_disks },
+        { label: 'Network', value: rowData.network },
+        { label: 'Subnet', value: rowData.subnetwork },
+        { label: 'Internal IP', value: rowData.network_ip },
+        { label: 'External IP', value: rowData.external_ip },
+        { label: 'Preemptible', value: rowData.preemptible != null ? (rowData.preemptible ? 'Yes' : 'No') : null },
+        { label: 'Deletion Protection', value: rowData.deletion_protection != null ? (rowData.deletion_protection ? 'Yes' : 'No') : null },
+        { label: 'Can IP Forward', value: rowData.can_ip_forward != null ? (rowData.can_ip_forward ? 'Yes' : 'No') : null },
+        { label: 'Shielded Secure Boot', value: rowData.shielded_secure_boot != null ? (rowData.shielded_secure_boot ? 'Yes' : 'No') : null },
+        { label: 'Service Account', value: rowData.service_account },
+      ];
+    case 'Persistent Disk':
+      return [
+        { label: 'Size (GB)', value: rowData.disk_size_gb },
+        { label: 'Type', value: rowData.disk_type },
+        { label: 'Zone', value: rowData.zone },
+        { label: 'Source Image', value: rowData.source_image },
+        { label: 'In Use By', value: rowData.in_use_by },
+        { label: 'Snapshot Schedules', value: rowData.snapshot_schedule_count },
+        { label: 'Encryption', value: rowData.encryption },
+        { label: 'Block Size (B)', value: rowData.physical_block_size_bytes },
+      ];
+    case 'Cloud Storage':
+      return [
+        { label: 'Storage Class', value: rowData.storage_class },
+        { label: 'Location Type', value: rowData.location_type },
+        { label: 'Versioning', value: rowData.versioning },
+        { label: 'Lifecycle Rules', value: rowData.lifecycle_rules },
+        { label: 'Public Access', value: rowData.public_access },
+        { label: 'Uniform Access', value: rowData.uniform_bucket_level_access != null ? (rowData.uniform_bucket_level_access ? 'Yes' : 'No') : null },
+        { label: 'Encryption', value: rowData.encryption },
+        { label: 'Logging', value: rowData.logging },
+        { label: 'Retention (days)', value: rowData.retention_policy_days },
+        { label: 'Requester Pays', value: rowData.requester_pays != null ? (rowData.requester_pays ? 'Yes' : 'No') : null },
+        { label: 'CORS Rules', value: rowData.cors_rules },
+      ];
+    case 'BigQuery':
+      return [
+        { label: 'Dataset ID', value: rowData.dataset_id },
+        { label: 'Location', value: rowData.location },
+        { label: 'Tables', value: rowData.table_count },
+        { label: 'Table Expiration', value: rowData.default_table_expiration_ms != null ? `${Math.round(rowData.default_table_expiration_ms / 86_400_000)}d` : null },
+        { label: 'Partition Expiration', value: rowData.default_partition_expiration_ms != null ? `${Math.round(rowData.default_partition_expiration_ms / 86_400_000)}d` : null },
+        { label: 'Description', value: rowData.description },
+        { label: 'Access Entries', value: rowData.access_entries },
+        { label: 'Labels', value: rowData.labels_count },
+        { label: 'KMS Key', value: rowData.kms_key },
+      ];
+    case 'Cloud SQL':
+      return [
+        { label: 'Version', value: rowData.database_version },
+        { label: 'Tier', value: rowData.tier },
+        { label: 'Disk (GB)', value: rowData.disk_size_gb },
+        { label: 'Disk Type', value: rowData.disk_type },
+        { label: 'Availability', value: rowData.availability_type },
+        { label: 'Backups', value: rowData.backup_enabled != null ? (rowData.backup_enabled ? 'Enabled' : 'Disabled') : null },
+        { label: 'PITR', value: rowData.point_in_time_recovery != null ? (rowData.point_in_time_recovery ? 'Enabled' : 'Disabled') : null },
+        { label: 'Connection Name', value: rowData.connection_name },
+        { label: 'Private IP', value: rowData.ip_address },
+        { label: 'Public IP', value: rowData.public_ip },
+        { label: 'Maintenance', value: rowData.maintenance_window },
+        { label: 'Deletion Protection', value: rowData.deletion_protection != null ? (rowData.deletion_protection ? 'Yes' : 'No') : null },
+        { label: 'DB Flags', value: rowData.database_flags },
+      ];
+    case 'GKE':
+      return [
+        { label: 'K8s Version', value: rowData.current_master_version },
+        { label: 'Nodes', value: rowData.node_count },
+        { label: 'Node Type', value: rowData.node_machine_type },
+        { label: 'Node Disk (GB)', value: rowData.node_disk_size_gb },
+        { label: 'Node Disk Type', value: rowData.node_disk_type },
+        { label: 'Node Image', value: rowData.node_image_type },
+        { label: 'Node Pools', value: rowData.node_pool_count },
+        { label: 'Network', value: rowData.network },
+        { label: 'Subnet', value: rowData.subnetwork },
+        { label: 'Autopilot', value: rowData.autopilot != null ? (rowData.autopilot ? 'Yes' : 'No') : null },
+        { label: 'Private Cluster', value: rowData.private_cluster != null ? (rowData.private_cluster ? 'Yes' : 'No') : null },
+        { label: 'Release Channel', value: rowData.release_channel },
+        { label: 'Services CIDR', value: rowData.services_ipv4_cidr },
+        { label: 'Cluster CIDR', value: rowData.cluster_ipv4_cidr },
+        { label: 'Logging', value: rowData.logging_service },
+        { label: 'Monitoring', value: rowData.monitoring_service },
+      ];
+    case 'Cloud Functions':
+      return [
+        { label: 'Runtime', value: rowData.runtime },
+        { label: 'Memory (MB)', value: rowData.available_memory_mb },
+        { label: 'Entry Point', value: rowData.entry_point },
+        { label: 'Trigger', value: rowData.trigger_type },
+        { label: 'Timeout', value: rowData.timeout },
+        { label: 'Min Instances', value: rowData.min_instances },
+        { label: 'Max Instances', value: rowData.max_instances },
+        { label: 'Service Account', value: rowData.service_account },
+        { label: 'Ingress', value: rowData.ingress_settings },
+        { label: 'VPC Connector', value: rowData.vpc_connector },
+        { label: 'Build Pool', value: rowData.build_worker_pool },
+        { label: 'Source', value: rowData.source_archive },
+      ];
+    case 'Cloud Run':
+      return [
+        { label: 'Image', value: rowData.container_image },
+        { label: 'CPU', value: rowData.cpu },
+        { label: 'Memory', value: rowData.memory },
+        { label: 'Min Instances', value: rowData.min_instances },
+        { label: 'Max Instances', value: rowData.max_instances },
+        { label: 'Port', value: rowData.port },
+        { label: 'Concurrency', value: rowData.concurrency },
+        { label: 'Timeout', value: rowData.timeout },
+        { label: 'Service Account', value: rowData.service_account },
+        { label: 'Ingress', value: rowData.ingress },
+        { label: 'VPC Connector', value: rowData.vpc_connector },
+        { label: 'Env Vars', value: rowData.env_var_count },
+        { label: 'URL', value: rowData.url },
+      ];
+    case 'Pub/Sub':
+      return [
+        { label: 'Retention', value: rowData.message_retention_duration },
+        { label: 'Subscriptions', value: rowData.subscription_count },
+        { label: 'KMS Key', value: rowData.kms_key },
+        { label: 'Schema', value: rowData.schema },
+        { label: 'Storage Policy', value: rowData.message_storage_policy },
+        { label: 'Labels', value: rowData.labels_count },
+      ];
+    case 'Cloud Memorystore':
+      return [
+        { label: 'Tier', value: rowData.tier },
+        { label: 'Memory (GB)', value: rowData.memory_size_gb },
+        { label: 'Redis Version', value: rowData.redis_version },
+        { label: 'Host', value: rowData.host },
+        { label: 'Port', value: rowData.port },
+        { label: 'Network', value: rowData.network },
+        { label: 'Auth', value: rowData.auth_enabled != null ? (rowData.auth_enabled ? 'Enabled' : 'Disabled') : null },
+        { label: 'TLS', value: rowData.transit_encryption_mode },
+        { label: 'Connect Mode', value: rowData.connect_mode },
+        { label: 'Read Replicas', value: rowData.read_replicas_mode },
+        { label: 'Replica Count', value: rowData.replica_count },
+        { label: 'Maintenance Day', value: rowData.maintenance_day },
+        { label: 'Maintenance Hour', value: rowData.maintenance_hour != null ? `${rowData.maintenance_hour}:00` : null },
+      ];
+    case 'Cloud Spanner':
+      return [
+        { label: 'Display Name', value: rowData.display_name },
+        { label: 'Config', value: rowData.config },
+        { label: 'Nodes', value: rowData.node_count },
+        { label: 'Processing Units', value: rowData.processing_units },
+        { label: 'Databases', value: rowData.database_count },
+        { label: 'Backups', value: rowData.backup_count },
+        { label: 'Backup Schedule', value: rowData.default_backup_schedule_type },
+      ];
+    case 'Firestore':
+      return [
+        { label: 'Type', value: rowData.type_detail },
+        { label: 'Location', value: rowData.location_id },
+        { label: 'Concurrency', value: rowData.concurrency_mode },
+        { label: 'App Engine Integration', value: rowData.app_engine_integration },
+        { label: 'PITR', value: rowData.point_in_time_recovery },
+        { label: 'Delete Protection', value: rowData.delete_protection },
+      ];
+    case 'Dataflow':
+      return [
+        { label: 'Job Type', value: rowData.job_type },
+        { label: 'SDK Version', value: rowData.sdk_version },
+        { label: 'Workers', value: rowData.worker_count },
+        { label: 'Max Workers', value: rowData.max_workers },
+        { label: 'Worker Type', value: rowData.worker_machine_type },
+        { label: 'Network', value: rowData.network },
+        { label: 'Subnet', value: rowData.subnetwork },
+        { label: 'Temp Bucket', value: rowData.temp_location },
+        { label: 'Service Account', value: rowData.service_account },
+      ];
+    case 'Dataproc':
+      return [
+        { label: 'Version', value: rowData.software_version },
+        { label: 'Master Type', value: rowData.master_machine_type },
+        { label: 'Master Disk (GB)', value: rowData.master_disk_gb },
+        { label: 'Workers', value: rowData.num_workers },
+        { label: 'Worker Type', value: rowData.worker_machine_type },
+        { label: 'Worker Disk (GB)', value: rowData.worker_disk_gb },
+        { label: 'Preemptible Workers', value: rowData.preemptible_workers },
+        { label: 'Network', value: rowData.network },
+        { label: 'Internal IP Only', value: rowData.internal_ip_only != null ? (rowData.internal_ip_only ? 'Yes' : 'No') : null },
+        { label: 'Component Gateway', value: rowData.component_gateway != null ? (rowData.component_gateway ? 'Yes' : 'No') : null },
+        { label: 'Idle Delete TTL', value: rowData.idle_delete_ttl },
+      ];
+    case 'VPC Network':
+      return [
+        { label: 'Auto Subnets', value: rowData.auto_create_subnetworks == null ? null : rowData.auto_create_subnetworks ? 'Yes' : 'No' },
+        { label: 'Routing Mode', value: rowData.routing_mode },
+        { label: 'MTU', value: rowData.mtu },
+        { label: 'Subnets', value: rowData.subnet_count },
+        { label: 'Peerings', value: rowData.peering_count },
+        { label: 'Firewall Rules', value: rowData.firewall_rule_count },
+        { label: 'Routes', value: rowData.route_count },
+        { label: 'Internal IPv6', value: rowData.internal_ipv6 != null ? (rowData.internal_ipv6 ? 'Yes' : 'No') : null },
+      ];
+    case 'Firewall Rule':
+      return [
+        { label: 'Direction', value: rowData.direction },
+        { label: 'Priority', value: rowData.priority },
+        { label: 'Protocol', value: rowData.protocol },
+        { label: 'Ports', value: rowData.ports },
+        { label: 'Source Ranges', value: rowData.source_ranges },
+        { label: 'Dest Ranges', value: rowData.destination_ranges },
+        { label: 'Target Tags', value: rowData.target_tags },
+        { label: 'Disabled', value: rowData.disabled != null ? (rowData.disabled ? 'Yes' : 'No') : null },
+        { label: 'Log Config', value: rowData.log_config },
+      ];
+    case 'Load Balancer':
+      return [
+        { label: 'Scheme', value: rowData.load_balancing_scheme },
+        { label: 'Protocol', value: rowData.protocol },
+        { label: 'IP Address', value: rowData.ip_address },
+        { label: 'Port Range', value: rowData.port_range },
+        { label: 'Backend Service', value: rowData.backend_service },
+        { label: 'SSL Certificates', value: rowData.ssl_certificates },
+        { label: 'Network Tier', value: rowData.network_tier },
+      ];
+    case 'Artifact Registry':
+      return [
+        { label: 'Format', value: rowData.format },
+        { label: 'Images', value: rowData.image_count },
+        { label: 'Size', value: rowData.size_bytes != null ? `${(rowData.size_bytes / 1_073_741_824).toFixed(1)} GB` : null },
+        { label: 'KMS Key', value: rowData.kms_key },
+        { label: 'Immutable Tags', value: rowData.immutable_tags != null ? (rowData.immutable_tags ? 'Yes' : 'No') : null },
+        { label: 'Vuln Scanning', value: rowData.vulnerability_scanning },
+        { label: 'Cleanup Policies', value: rowData.cleanup_policy_count },
+      ];
+    case 'Cloud Composer':
+      return [
+        { label: 'Airflow Version', value: rowData.airflow_version },
+        { label: 'Size', value: rowData.environment_size },
+        { label: 'Python Version', value: rowData.python_version },
+        { label: 'GKE Cluster', value: rowData.gke_cluster },
+        { label: 'DAG Bucket', value: rowData.dag_gcs_prefix },
+        { label: 'Nodes', value: rowData.node_count },
+        { label: 'Schedulers', value: rowData.scheduler_count },
+        { label: 'Web Access', value: rowData.web_server_network_access_control },
+      ];
+    case 'Cloud Scheduler':
+      return [
+        { label: 'Schedule', value: rowData.schedule },
+        { label: 'Timezone', value: rowData.timezone },
+        { label: 'Target Type', value: rowData.target_type },
+        { label: 'HTTP Method', value: rowData.http_method },
+        { label: 'URI', value: rowData.uri },
+        { label: 'Retry Count', value: rowData.retry_count },
+        { label: 'Attempt Deadline', value: rowData.attempt_deadline },
+      ];
+    case 'Cloud Tasks':
+      return [
+        { label: 'Max Dispatches/s', value: rowData.max_dispatches_per_second },
+        { label: 'Max Concurrent', value: rowData.max_concurrent_dispatches },
+        { label: 'Max Attempts', value: rowData.max_attempts },
+        { label: 'Max Retry Duration', value: rowData.max_retry_duration },
+        { label: 'Min Backoff', value: rowData.min_backoff },
+        { label: 'Max Backoff', value: rowData.max_backoff },
+        { label: 'Max Doublings', value: rowData.max_doublings },
+        { label: 'Tasks', value: rowData.task_count },
+      ];
+    case 'Filestore':
+      return [
+        { label: 'Tier', value: rowData.tier },
+        { label: 'Capacity (GB)', value: rowData.capacity_gb },
+        { label: 'Share Name', value: rowData.share_name },
+        { label: 'File Shares', value: rowData.file_shares },
+        { label: 'Network', value: rowData.network },
+        { label: 'IP Addresses', value: rowData.ip_addresses },
+        { label: 'Modes', value: rowData.modes },
+        { label: 'Snapshots', value: rowData.snapshot_count },
+        { label: 'KMS Key', value: rowData.kms_key },
+      ];
+    case 'Cloud Bigtable':
+      return [
+        { label: 'Clusters', value: rowData.cluster_count },
+        { label: 'Cluster ID', value: rowData.cluster_id },
+        { label: 'Nodes', value: rowData.node_count },
+        { label: 'Storage Type', value: rowData.storage_type },
+        { label: 'Tables', value: rowData.table_count },
+        { label: 'Backups', value: rowData.backup_count },
+        { label: 'Deletion Protection', value: rowData.deletion_protection != null ? (rowData.deletion_protection ? 'Yes' : 'No') : null },
+        { label: 'KMS Key', value: rowData.kms_key },
+      ];
+    case 'Service Account':
+      return [
+        { label: 'Email', value: rowData.email },
+        { label: 'Description', value: rowData.description },
+        { label: 'OAuth2 Client ID', value: rowData.oauth2_client_id },
+        { label: 'Keys', value: rowData.key_count },
+        { label: 'Disabled', value: rowData.disabled != null ? (rowData.disabled ? 'Yes' : 'No') : null },
+      ];
+    case 'Cloud DNS':
+      return [
+        { label: 'DNS Name', value: rowData.dns_name },
+        { label: 'Visibility', value: rowData.visibility },
+        { label: 'Record Sets', value: rowData.record_set_count },
+        { label: 'Name Servers', value: rowData.name_servers },
+        { label: 'DNSSEC', value: rowData.dnssec },
+        { label: 'Query Logging', value: rowData.log_dns_queries != null ? (rowData.log_dns_queries ? 'Enabled' : 'Disabled') : null },
+      ];
+    case 'Secret Manager':
+      return [
+        { label: 'Replication', value: rowData.replication },
+        { label: 'Versions', value: rowData.version_count },
+        { label: 'Rotation Period', value: rowData.rotation_period },
+        { label: 'Expire Time', value: rowData.expire_time },
+        { label: 'Topics', value: rowData.topics },
+        { label: 'ETag', value: rowData.etag },
+      ];
+    case 'Cloud KMS':
+      return [
+        { label: 'Key Ring', value: rowData.key_ring },
+        { label: 'Purpose', value: rowData.purpose },
+        { label: 'Algorithm', value: rowData.algorithm },
+        { label: 'Protection Level', value: rowData.protection_level },
+        { label: 'Rotation Period', value: rowData.rotation_period },
+        { label: 'Next Rotation', value: rowData.next_rotation_time },
+        { label: 'Versions', value: rowData.version_count },
+        { label: 'Destroy Duration', value: rowData.destroy_scheduled_duration },
+      ];
+    case 'API Gateway':
+      return [
+        { label: 'Hostname', value: rowData.default_hostname },
+        { label: 'Managed Service', value: rowData.managed_service },
+        { label: 'Config ID', value: rowData.config_id },
+        { label: 'Labels', value: rowData.labels_count },
+      ];
+    case 'Cloud Logging':
+      return [
+        { label: 'Destination', value: rowData.destination },
+        { label: 'Filter', value: rowData.filter },
+        { label: 'Sink Type', value: rowData.sink_type },
+        { label: 'Include Children', value: rowData.include_children != null ? (rowData.include_children ? 'Yes' : 'No') : null },
+        { label: 'Writer Identity', value: rowData.writer_identity },
+      ];
+    case 'Cloud Monitoring':
+      return [
+        { label: 'Conditions', value: rowData.condition_count },
+        { label: 'Channels', value: rowData.notification_channels },
+        { label: 'Combiner', value: rowData.combiner },
+        { label: 'Alert Strategy', value: rowData.alert_strategy },
+        { label: 'Severity', value: rowData.severity },
+        { label: 'Documentation', value: rowData.documentation_content },
+      ];
+    case 'Cloud Build':
+      return [
+        { label: 'Machine Type', value: rowData.machine_type },
+        { label: 'Timeout', value: rowData.timeout },
+        { label: 'Log Bucket', value: rowData.log_bucket },
+        { label: 'Service Account', value: rowData.service_account },
+        { label: 'Worker Pool', value: rowData.worker_pool },
+        { label: 'Substitutions', value: rowData.substitution_count },
+      ];
+    case 'Cloud CDN':
+      return [
+        { label: 'Cache Mode', value: rowData.cache_mode },
+        { label: 'Protocol', value: rowData.protocol },
+        { label: 'Negative Caching', value: rowData.negative_caching != null ? (rowData.negative_caching ? 'Yes' : 'No') : null },
+        { label: 'Signed URL Keys', value: rowData.signed_url_key_count },
+        { label: 'Max TTL (s)', value: rowData.cdn_policy_max_ttl },
+        { label: 'Default TTL (s)', value: rowData.cdn_policy_default_ttl },
+        { label: 'Compression', value: rowData.compression_mode },
+      ];
+    case 'IP Address':
+      return [
+        { label: 'Address', value: rowData.address },
+        { label: 'Address Type', value: rowData.address_type },
+        { label: 'IP Version', value: rowData.ip_version },
+        { label: 'Network Tier', value: rowData.network_tier },
+        { label: 'In Use By', value: rowData.in_use_by },
+      ];
+    case 'App Engine':
+      return [
+        { label: 'Runtime', value: rowData.runtime },
+        { label: 'Environment', value: rowData.env },
+        { label: 'Serving Status', value: rowData.serving_status },
+        { label: 'Instance Class', value: rowData.instance_class },
+        { label: 'Min Instances', value: rowData.automatic_scaling_min_instances },
+        { label: 'Max Instances', value: rowData.automatic_scaling_max_instances },
+        { label: 'Inbound Services', value: rowData.inbound_services },
+      ];
+    case 'Vertex AI':
+      return [
+        { label: 'Display Name', value: rowData.display_name },
+        { label: 'Model Type', value: rowData.model_type },
+        { label: 'Framework', value: rowData.framework },
+        { label: 'Artifact URI', value: rowData.artifact_uri },
+        { label: 'Schema', value: rowData.schema_title },
+        { label: 'Versions', value: rowData.version_count },
+        { label: 'Deployments', value: rowData.deployment_count },
+        { label: 'Training Pipeline', value: rowData.training_pipeline },
+      ];
+    case 'AMI':
+      return [
+        { label: 'Architecture', value: rowData.architecture },
+        { label: 'Platform', value: rowData.platform },
+        { label: 'Virtualization', value: rowData.virtualization_type },
+        { label: 'Root Device', value: rowData.root_device_type },
+        { label: 'Hypervisor', value: rowData.hypervisor },
+        { label: 'Image Type', value: rowData.image_type },
+        { label: 'Public', value: rowData.public != null ? (rowData.public ? 'Yes' : 'No') : null },
+        { label: 'Created', value: rowData.creation_date },
+        { label: 'Owner', value: rowData.owner_id },
+      ];
+    case 'EBS Volume':
+      return [
+        { label: 'Type', value: rowData.volume_type },
+        { label: 'Size', value: rowData.size },
+        { label: 'AZ', value: rowData.availability_zone },
+        { label: 'IOPS', value: rowData.iops },
+        { label: 'Throughput', value: rowData.throughput ? `${rowData.throughput} MiB/s` : null },
+        { label: 'Encrypted', value: rowData.encrypted != null ? (rowData.encrypted ? 'Yes' : 'No') : null },
+        { label: 'Attached To', value: rowData.attached_to },
+        { label: 'Device', value: rowData.attached_device },
+        { label: 'Snapshot', value: rowData.snapshot_id },
+      ];
+    case 'EBS Snapshot':
+      return [
+        { label: 'Volume', value: rowData.volume_id },
+        { label: 'Size', value: rowData.size },
+        { label: 'Progress', value: rowData.progress },
+        { label: 'Encrypted', value: rowData.encrypted != null ? (rowData.encrypted ? 'Yes' : 'No') : null },
+        { label: 'Started', value: rowData.start_time },
+        { label: 'Description', value: rowData.description },
+      ];
+    case 'Security Group':
+      return [
+        { label: 'Group ID', value: rowData.group_id },
+        { label: 'VPC', value: rowData.vpc_id },
+        { label: 'Inbound Rules', value: rowData.inbound_rules },
+        { label: 'Outbound Rules', value: rowData.outbound_rules },
+        { label: 'Description', value: rowData.description },
+      ];
+    case 'Elastic IP':
+      return [
+        { label: 'Public IP', value: rowData.public_ip },
+        { label: 'Private IP', value: rowData.private_ip },
+        { label: 'Allocation ID', value: rowData.allocation_id },
+        { label: 'Instance', value: rowData.instance_id },
+        { label: 'Network Interface', value: rowData.network_interface_id },
+        { label: 'Domain', value: rowData.domain },
+      ];
+    case 'Key Pair':
+      return [
+        { label: 'Key Pair ID', value: rowData.key_pair_id },
+        { label: 'Type', value: rowData.key_type },
+        { label: 'Fingerprint', value: rowData.fingerprint },
+        { label: 'Created', value: rowData.creation_time },
+      ];
+    case 'Network Interface':
+      return [
+        { label: 'Interface Type', value: rowData.interface_type },
+        { label: 'VPC', value: rowData.vpc_id },
+        { label: 'Subnet', value: rowData.subnet_id },
+        { label: 'Private IP', value: rowData.private_ip },
+        { label: 'Public IP', value: rowData.public_ip },
+        { label: 'MAC', value: rowData.mac_address },
+        { label: 'Security Groups', value: rowData.security_groups },
+        { label: 'Attached To', value: rowData.attached_to },
+      ];
+    case 'Placement Group':
+      return [
+        { label: 'Strategy', value: rowData.strategy },
+        { label: 'Partitions', value: rowData.partition_count },
+        { label: 'Spread Level', value: rowData.spread_level },
+      ];
+    case 'Target Group':
+      return [
+        { label: 'Protocol', value: rowData.protocol },
+        { label: 'Port', value: rowData.port },
+        { label: 'Target Type', value: rowData.target_type },
+        { label: 'VPC', value: rowData.vpc_id },
+        { label: 'Load Balancers', value: rowData.load_balancers },
+        { label: 'Health Check', value: rowData.health_check_path || rowData.health_check_protocol },
+        { label: 'Healthy Threshold', value: rowData.healthy_threshold },
+        { label: 'Unhealthy Threshold', value: rowData.unhealthy_threshold },
+      ];
+    case 'Auto Scaling Group':
+      return [
+        { label: 'Min', value: rowData.min_size },
+        { label: 'Max', value: rowData.max_size },
+        { label: 'Desired', value: rowData.desired_capacity },
+        { label: 'Launch Template', value: rowData.launch_template || rowData.launch_config },
+        { label: 'Health Check', value: rowData.health_check_type },
+        { label: 'AZs', value: rowData.availability_zones },
+      ];
+    default:
+      return rowData.size ? [{ label: 'Size', value: rowData.size }] : [];
+  }
+}
+
+function ec2ExpansionTemplate(rowData) {
+  const chipStyle = (color) => ({
+    background: `${color}22`, color, borderRadius: '8px',
+    padding: '2px 10px', fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap',
+  });
+
+  const fieldRow = (label, value, mono = false) => {
+    if (value === null || value === undefined || value === '') return null;
+    return (
+      <div key={label} className="flex align-items-start gap-2 mb-1" style={{ fontSize: '0.82rem' }}>
+        <span style={{ color: '#64748b', minWidth: '150px', flexShrink: 0 }}>{label}</span>
+        <span style={{ color: mono ? '#93c5fd' : '#e2e8f0', fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>
+          {String(value)}
+        </span>
+      </div>
+    );
+  };
+
+  const boolChip = (val, trueLabel = 'Yes', falseLabel = 'No') => {
+    if (val === null || val === undefined) return '—';
+    return val
+      ? <span style={chipStyle('#4ade80')}>{trueLabel}</span>
+      : <span style={chipStyle('#f87171')}>{falseLabel}</span>;
+  };
+
+  const sectionTitle = (icon, label, color) => (
+    <div className="flex align-items-center gap-2 mb-2 mt-1">
+      <i className={`pi ${icon}`} style={{ color }} />
+      <span className="font-semibold text-sm" style={{ color }}>{label}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: '1rem 1.5rem', background: '#0f172a', borderRadius: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+
+        {/* Instance Details */}
+        <div>
+          {sectionTitle('pi-server', 'Instance Details', '#818cf8')}
+          {fieldRow('Instance ID', rowData.id, true)}
+          {fieldRow('Instance Type', rowData.instance_type || rowData.size, true)}
+          {fieldRow('AMI ID', rowData.ami_id, true)}
+          {fieldRow('Platform', rowData.platform)}
+          {fieldRow('Architecture', rowData.architecture)}
+          {fieldRow('Virtualization', rowData.virtualization_type)}
+          {fieldRow('Hypervisor', rowData.hypervisor)}
+          {fieldRow('Launch Time', rowData.launch_time)}
+          {fieldRow('State Reason', rowData.state_transition_reason)}
+        </div>
+
+        {/* Network */}
+        <div>
+          {sectionTitle('pi-sitemap', 'Network', '#34d399')}
+          {fieldRow('Availability Zone', rowData.availability_zone, true)}
+          {fieldRow('VPC ID', rowData.vpc_id, true)}
+          {fieldRow('Subnet ID', rowData.subnet_id, true)}
+          {fieldRow('Private IP', rowData.private_ip, true)}
+          {fieldRow('Private DNS', rowData.private_dns_name, true)}
+          {fieldRow('Public IP', rowData.public_ip)}
+          {fieldRow('Public DNS', rowData.public_dns_name)}
+          {fieldRow('Security Groups', rowData.security_groups)}
+          <div className="flex align-items-start gap-2 mb-1" style={{ fontSize: '0.82rem' }}>
+            <span style={{ color: '#64748b', minWidth: '150px', flexShrink: 0 }}>Source/Dest Check</span>
+            <span>{boolChip(rowData.source_dest_check, 'Enabled', 'Disabled')}</span>
+          </div>
+        </div>
+
+        {/* Storage */}
+        <div>
+          {sectionTitle('pi-database', 'Storage', '#fb923c')}
+          {fieldRow('Root Device Type', rowData.root_device_type)}
+          {fieldRow('Root Device Name', rowData.root_device_name, true)}
+          <div className="flex align-items-start gap-2 mb-1" style={{ fontSize: '0.82rem' }}>
+            <span style={{ color: '#64748b', minWidth: '150px', flexShrink: 0 }}>EBS Optimized</span>
+            <span>{boolChip(rowData.ebs_optimized)}</span>
+          </div>
+          {fieldRow('Block Devices', rowData.block_devices, true)}
+        </div>
+
+        {/* Security */}
+        <div>
+          {sectionTitle('pi-shield', 'Security', '#f472b6')}
+          {fieldRow('Key Pair', rowData.key_name, true)}
+          {fieldRow('IAM Role', rowData.iam_role, true)}
+          {fieldRow('Tenancy', rowData.tenancy)}
+        </div>
+
+        {/* Performance & Monitoring */}
+        <div>
+          {sectionTitle('pi-chart-line', 'Performance & Monitoring', '#60a5fa')}
+          <div className="flex align-items-start gap-2 mb-1" style={{ fontSize: '0.82rem' }}>
+            <span style={{ color: '#64748b', minWidth: '150px', flexShrink: 0 }}>Monitoring</span>
+            <span style={chipStyle(rowData.monitoring_state === 'enabled' ? '#4ade80' : '#94a3b8')}>
+              {rowData.monitoring_state || '—'}
+            </span>
+          </div>
+          {fieldRow('CPU Cores', rowData.cpu_core_count)}
+          {fieldRow('Threads/Core', rowData.cpu_threads_per_core)}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+function vpcExpansionTemplate(rowData) {
+  const subnets = rowData.subnets || [];
+  const natGateways = rowData.nat_gateways || [];
+  const igws = rowData.internet_gateways || [];
+
+  const chipStyle = (color) => ({
+    background: `${color}22`, color, borderRadius: '8px',
+    padding: '2px 8px', fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap',
+  });
+
+  return (
+    <div style={{ padding: '1rem 1.5rem', background: '#0f172a', borderRadius: '10px' }}>
+      <div className="flex flex-wrap gap-4">
+        {/* Subnets */}
+        <div style={{ flex: '1 1 280px' }}>
+          <div className="flex align-items-center gap-2 mb-2">
+            <i className="pi pi-sitemap" style={{ color: '#60a5fa' }} />
+            <span className="font-semibold text-sm" style={{ color: '#93c5fd' }}>
+              Subnets ({subnets.length})
+            </span>
+          </div>
+          {subnets.length === 0 ? (
+            <span style={{ color: '#64748b', fontSize: '0.8rem' }}>No subnets found</span>
+          ) : (
+            <div className="flex flex-column gap-1">
+              {subnets.map((s) => (
+                <div key={s.id} className="flex align-items-center gap-2 flex-wrap">
+                  <span style={{ fontFamily: 'monospace', color: '#e2e8f0', fontSize: '0.8rem' }}>{s.id}</span>
+                  <span style={chipStyle('#4ade80')}>{s.cidr}</span>
+                  <span style={chipStyle('#94a3b8')}>{s.az}</span>
+                  {s.public && <span style={chipStyle('#f59e0b')}>Public</span>}
+                  {!s.public && <span style={chipStyle('#64748b')}>Private</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* NAT Gateways */}
+        <div style={{ flex: '1 1 220px' }}>
+          <div className="flex align-items-center gap-2 mb-2">
+            <i className="pi pi-arrow-right-arrow-left" style={{ color: '#f59e0b' }} />
+            <span className="font-semibold text-sm" style={{ color: '#fcd34d' }}>
+              NAT Gateways ({natGateways.length})
+            </span>
+          </div>
+          {natGateways.length === 0 ? (
+            <span style={{ color: '#64748b', fontSize: '0.8rem' }}>No NAT Gateways</span>
+          ) : (
+            <div className="flex flex-column gap-1">
+              {natGateways.map((n) => (
+                <div key={n.id} className="flex align-items-center gap-2 flex-wrap">
+                  <span style={{ fontFamily: 'monospace', color: '#e2e8f0', fontSize: '0.8rem' }}>{n.id}</span>
+                  <span style={chipStyle('#4ade80')}>{n.state}</span>
+                  {n.subnet_id && <span style={{ color: '#94a3b8', fontSize: '0.76rem' }}>{n.subnet_id}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Internet Gateways */}
+        <div style={{ flex: '1 1 200px' }}>
+          <div className="flex align-items-center gap-2 mb-2">
+            <i className="pi pi-globe" style={{ color: '#a78bfa' }} />
+            <span className="font-semibold text-sm" style={{ color: '#c4b5fd' }}>
+              Internet Gateways ({igws.length})
+            </span>
+          </div>
+          {igws.length === 0 ? (
+            <span style={{ color: '#64748b', fontSize: '0.8rem' }}>No Internet Gateways</span>
+          ) : (
+            <div className="flex flex-column gap-1">
+              {igws.map((igwId) => (
+                <span key={igwId} style={{ fontFamily: 'monospace', color: '#e2e8f0', fontSize: '0.8rem' }}>
+                  {igwId}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+const AWS_REGIONS = [
+  { label: 'US East (N. Virginia) — us-east-1', value: 'us-east-1' },
+  { label: 'US East (Ohio) — us-east-2', value: 'us-east-2' },
+  { label: 'US West (N. California) — us-west-1', value: 'us-west-1' },
+  { label: 'US West (Oregon) — us-west-2', value: 'us-west-2' },
+  { label: 'Canada (Central) — ca-central-1', value: 'ca-central-1' },
+  { label: 'Europe (Ireland) — eu-west-1', value: 'eu-west-1' },
+  { label: 'Europe (London) — eu-west-2', value: 'eu-west-2' },
+  { label: 'Europe (Frankfurt) — eu-central-1', value: 'eu-central-1' },
+  { label: 'Europe (Paris) — eu-west-3', value: 'eu-west-3' },
+  { label: 'Europe (Stockholm) — eu-north-1', value: 'eu-north-1' },
+  { label: 'Asia Pacific (Tokyo) — ap-northeast-1', value: 'ap-northeast-1' },
+  { label: 'Asia Pacific (Seoul) — ap-northeast-2', value: 'ap-northeast-2' },
+  { label: 'Asia Pacific (Singapore) — ap-southeast-1', value: 'ap-southeast-1' },
+  { label: 'Asia Pacific (Sydney) — ap-southeast-2', value: 'ap-southeast-2' },
+  { label: 'Asia Pacific (Mumbai) — ap-south-1', value: 'ap-south-1' },
+  { label: 'South America (São Paulo) — sa-east-1', value: 'sa-east-1' },
+];
+
+export default function ResourcesView({ provider }) {
+  // GCP uses the new service-cards-first flow
+  if (provider === 'gcp') {
+    return <GcpResourcesView />;
+  }
+  // AWS uses the service-cards-first flow with size info
+  if (provider === 'aws') {
+    return <AwsResourcesView />;
+  }
+  return <FilteredResourcesView provider={provider} />;
+}
+
+// ---------------------------------------------------------------------------
+// GCP: service cards → resource table drill-down
+// ---------------------------------------------------------------------------
+
+function GcpResourcesView() {
+  const toast = useRef(null);
+  const [summary, setSummary] = useState([]);   // [{type, count}]
+  const [apiError, setApiError] = useState(null); // real GCP API error (falls back to mock)
+  const [requiredRoles, setRequiredRoles] = useState([]); // roles needed for real data
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedService, setSelectedService] = useState(null); // null = overview
+  const [serviceResources, setServiceResources] = useState([]);
+  const [loadingResources, setLoadingResources] = useState(false);
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [serviceSearch, setServiceSearch] = useState('');
+
+  useEffect(() => {
+    getResourceSummary()
+      .then((r) => {
+        setSummary(r.data.summary);
+        if (r.data.api_error) {
+          setApiError(r.data.api_error);
+          setRequiredRoles(r.data.required_roles || []);
+        }
+      })
+      .catch((err) => {
+        const msg = err?.response?.data?.detail || 'Failed to load resource summary';
+        setError(msg);
+        toast.current?.show({
+          severity: 'error',
+          summary: 'Unable to retrieve resources',
+          detail: msg,
+          life: 15000,
+          sticky: false,
+        });
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleServiceClick = useCallback(async (serviceType) => {
+    setSelectedService(serviceType);
+    setLoadingResources(true);
+    setGlobalFilter('');
+    try {
+      const res = await getResources([serviceType], null);
+      setServiceResources(res.data.resources);
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Failed to load resources');
+      toast.current?.show({
+        severity: 'error',
+        summary: 'Unable to retrieve resources',
+        detail: err?.response?.data?.detail || 'Failed to load resources',
+        life: 15000,
+        sticky: false,
+      });
+    } finally {
+      setLoadingResources(false);
+    }
+  }, []);
+
+  const handleBack = useCallback(() => {
+    setSelectedService(null);
+    setServiceResources([]);
+    setGlobalFilter('');
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex justify-content-center align-items-center flex-column gap-3" style={{ minHeight: '300px' }}>
+        <ProgressSpinner style={{ width: '50px', height: '50px' }} strokeWidth="4" />
+        <span className="text-sm" style={{ color: '#94a3b8' }}>Loading services…</span>
+      </div>
+    );
+  }
+
+  if (error) return (
+    <>
+      <Toast ref={toast} />
+      <Message severity="error" text={error} className="w-full" />
+    </>
+  );
+
+  // --- Drill-down: resources for a specific service ---
+  if (selectedService) {
+    const tableHeader = (
+      <div className="flex justify-content-between align-items-center flex-wrap gap-3"
+           style={{ background: '#1e293b', padding: '0.75rem 1rem' }}>
+        <span className="text-lg font-semibold flex align-items-center gap-2" style={{ color: '#f1f5f9' }}>
+          <i className={`pi ${TYPE_ICON[selectedService] || 'pi-box'}`} style={{ color: '#818cf8' }} />
+          {selectedService}
+          <Badge value={serviceResources.length}
+            style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff' }} />
+        </span>
+        <span className="p-input-icon-left">
+          <i className="pi pi-search" />
+          <InputText
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            placeholder="Search resources…"
+            style={{ borderRadius: '20px' }}
+          />
+        </span>
+      </div>
+    );
+
+    return (
+      <div className="flex flex-column gap-4">
+        <Toast ref={toast} />
+        <div className="flex align-items-center gap-2">
+          <Button
+            icon="pi pi-arrow-left"
+            label="Back to Services"
+            className="p-button-text"
+            onClick={handleBack}
+            style={{ color: '#a5b4fc' }}
+          />
+        </div>
+        {loadingResources ? (
+          <div className="flex justify-content-center align-items-center flex-column gap-2" style={{ minHeight: '200px' }}>
+            <ProgressSpinner style={{ width: '36px', height: '36px' }} strokeWidth="4" />
+            <span className="text-sm" style={{ color: '#94a3b8' }}>Loading resources…</span>
+          </div>
+        ) : (
+          <DataTable
+            value={serviceResources}
+            header={tableHeader}
+            globalFilter={globalFilter}
+            paginator
+            rows={10}
+            rowsPerPageOptions={[10, 25, 50]}
+            sortMode="multiple"
+            removableSort
+            stripedRows
+            emptyMessage={
+              <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
+                <i className="pi pi-inbox text-4xl" />
+                <span>No resources found for {selectedService}.</span>
+              </div>
+            }
+            style={{ borderRadius: '16px', overflow: 'hidden' }}
+          >
+            <Column field="name" header="Name" sortable style={{ minWidth: '160px', fontWeight: 500 }} />
+            <Column field="type" header="Type" body={typeTemplate} sortable style={{ minWidth: '150px' }} />
+            <Column field="region" header="Region" sortable style={{ minWidth: '120px' }} />
+            <Column field="status" header="Status" body={statusTemplate} sortable style={{ minWidth: '110px' }} />
+            <Column header="Configuration" body={detailsTemplate} style={{ minWidth: '260px' }} />
+            <Column field="tags" header="Tags" body={tagsTemplate} style={{ minWidth: '220px' }} />
+          </DataTable>
+        )}
+      </div>
+    );
+  }
+
+  // --- Overview: service cards grid ---
+  const filteredSummary = serviceSearch.trim()
+    ? summary.filter((s) => s.type.toLowerCase().includes(serviceSearch.toLowerCase()))
+    : summary;
+
+  return (
+    <div className="flex flex-column gap-4">
+      <Toast ref={toast} />
+      {/* IAM / API error banner — shown only in mock mode when real GCP call failed */}
+      {apiError && (
+        <div style={{
+          background: '#1e3a5f',
+          border: '1px solid #2563eb',
+          borderRadius: '12px',
+          padding: '1rem 1.2rem',
+        }}>
+          <div className="flex align-items-start gap-2 mb-2">
+            <i className="pi pi-info-circle" style={{ color: '#60a5fa', marginTop: '2px' }} />
+            <div>
+              <span className="font-semibold" style={{ color: '#93c5fd' }}>
+                Showing mock data — could not connect to GCP
+              </span>
+              <div className="text-sm mt-1" style={{ color: '#7dd3fc', wordBreak: 'break-word' }}>
+                Error: {apiError?.trim() || 'Unable to retrieve GCP resources'}
+              </div>
+            </div>
+          </div>
+          {requiredRoles.length > 0 && (
+            <div className="mt-2">
+              <span className="text-sm font-semibold" style={{ color: '#93c5fd' }}>
+                Grant these IAM roles to your service account for real data:
+              </span>
+              <div className="flex flex-column gap-1 mt-1">
+                {requiredRoles.map((r) => (
+                  <div key={r.role} className="flex align-items-start gap-2 text-sm">
+                    <span style={{
+                      background: '#1d4ed8', color: '#bfdbfe',
+                      borderRadius: '6px', padding: '1px 8px',
+                      fontFamily: 'monospace', whiteSpace: 'nowrap',
+                    }}>
+                      {r.role}
+                    </span>
+                    <span style={{ color: '#94a3b8' }}>{r.purpose}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      <div className="flex align-items-center justify-content-between flex-wrap gap-3">
+        <div className="flex align-items-center gap-2">
+          <i className="pi pi-th-large" style={{ color: '#818cf8', fontSize: '1.2rem' }} />
+          <span className="text-lg font-semibold" style={{ color: '#f1f5f9' }}>
+            All Services
+          </span>
+          <Badge value={filteredSummary.length} style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff' }} />
+        </div>
+        <span className="p-input-icon-left">
+          <i className="pi pi-search" />
+          <InputText
+            value={serviceSearch}
+            onChange={(e) => setServiceSearch(e.target.value)}
+            placeholder="Search services…"
+            style={{ borderRadius: '20px', minWidth: '220px' }}
+          />
+        </span>
+      </div>
+      {filteredSummary.length === 0 ? (
+        <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
+          <i className="pi pi-search text-4xl" />
+          <span>No services match "<strong>{serviceSearch}</strong>"</span>
+        </div>
+      ) : (
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+        gap: '1rem',
+      }}>
+        {filteredSummary.map((svc) => {
+          const icon = TYPE_ICON[svc.type] || 'pi-box';
+          const colorIdx = svc.type.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % TYPE_COLORS.length;
+          const color = TYPE_COLORS[colorIdx];
+          return (
+            <div
+              key={svc.type}
+              onClick={() => handleServiceClick(svc.type)}
+              style={{
+                background: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: '14px',
+                padding: '1.2rem 1rem',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.6rem',
+                transition: 'border-color 0.2s, transform 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = color;
+                e.currentTarget.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#334155';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <div className="flex align-items-center gap-2">
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '8px',
+                  background: `${color}22`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <i className={`pi ${icon}`} style={{ color, fontSize: '1.1rem' }} />
+                </div>
+                <span className="font-semibold text-sm" style={{ color: '#f1f5f9', lineHeight: '1.3' }}>
+                  {svc.type}
+                </span>
+              </div>
+              <div className="flex align-items-center justify-content-between">
+                <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Resources</span>
+                <span style={{
+                  background: `${color}33`,
+                  color,
+                  borderRadius: '20px',
+                  padding: '2px 10px',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                }}>
+                  {svc.count}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AWS: service cards → EC2 sub-categories (or direct resource table)
+// ---------------------------------------------------------------------------
+
+function sizeTemplate(rowData) {
+  if (!rowData.size) return <span style={{ color: '#64748b' }}>—</span>;
+  return (
+    <span style={{ fontFamily: 'monospace', color: '#93c5fd', fontSize: '0.85rem' }}>
+      {rowData.size}
+    </span>
+  );
+}
+
+// All resource types that belong to the EC2 console category
+const EC2_RESOURCE_TYPES = new Set([
+  'EC2', 'AMI', 'EBS Volume', 'EBS Snapshot',
+  'Security Group', 'Elastic IP', 'Placement Group', 'Key Pair', 'Network Interface',
+  'ELB', 'Target Group', 'Auto Scaling Group',
+]);
+
+function AwsResourcesView() {
+  const toast = useRef(null);
+  const [summary, setSummary] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  // null = service cards, 'EC2_PANEL' = EC2 sub-categories, or a specific type string
+  const [selectedService, setSelectedService] = useState(null);
+  const [serviceResources, setServiceResources] = useState([]);
+  const [loadingResources, setLoadingResources] = useState(false);
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [expandedRows, setExpandedRows] = useState({});
+  const [selectedRegion, setSelectedRegion] = useState('us-east-1');
+
+  const fetchSummary = useCallback((region) => {
+    setLoading(true);
+    setError(null);
+    getResourceSummary(region)
+      .then((r) => setSummary(r.data.summary))
+      .catch((err) => {
+        const msg = err?.response?.data?.detail || 'Failed to load resource summary';
+        setError(msg);
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: msg, life: 15000 });
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchSummary(selectedRegion);
+  }, [fetchSummary, selectedRegion]);
+
+  const resetDrillDown = useCallback((nextService = null) => {
+    setSelectedService(nextService);
+    setServiceResources([]);
+    setGlobalFilter('');
+    setExpandedRows({});
+  }, []);
+
+  // Shared resource-loading logic used by both the top-level service cards and
+  // the EC2 panel sub-items.  Using a single helper avoids duplicating the
+  // try/catch/finally pattern and ensures state is always reset consistently.
+  const loadResources = useCallback(async (serviceType) => {
+    setSelectedService(serviceType);
+    setLoadingResources(true);
+    setGlobalFilter('');
+    setExpandedRows({});
+    try {
+      const res = await getResources([serviceType], selectedRegion);
+      setServiceResources(res.data.resources);
+    } catch (err) {
+      const msg = err?.response?.data?.detail || 'Failed to load resources';
+      setError(msg);
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: msg, life: 15000 });
+    } finally {
+      setLoadingResources(false);
+    }
+  }, [selectedRegion]);
+
+  const handleServiceClick = useCallback((serviceType) => {
+    // EC2 opens the sub-category navigation panel instead of a resource table
+    if (serviceType === 'EC2') {
+      setSelectedService('EC2_PANEL');
+      return;
+    }
+    loadResources(serviceType);
+  }, [loadResources]);
+
+  // Used by EC2 panel sub-items — loads resources directly, bypassing the
+  // 'EC2' → 'EC2_PANEL' redirect so that clicking "Instances" actually shows
+  // the instances table.
+  const handleEc2ItemClick = useCallback((resourceType) => {
+    loadResources(resourceType);
+  }, [loadResources]);
+
+  const handleBack = useCallback(() => {
+    // If viewing an EC2 sub-resource, go back to EC2 panel; otherwise go to service cards
+    resetDrillDown(EC2_RESOURCE_TYPES.has(selectedService) ? 'EC2_PANEL' : null);
+  }, [selectedService, resetDrillDown]);
+
+  const handleBackToServices = useCallback(() => {
+    resetDrillDown(null);
+  }, [resetDrillDown]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-content-center align-items-center flex-column gap-3" style={{ minHeight: '300px' }}>
+        <ProgressSpinner style={{ width: '50px', height: '50px' }} strokeWidth="4" />
+        <span className="text-sm" style={{ color: '#94a3b8' }}>Loading services…</span>
+      </div>
+    );
+  }
+
+  if (error) return (
+    <>
+      <Toast ref={toast} />
+      <Message severity="error" text={error} className="w-full" />
+    </>
+  );
+
+  // --- EC2 sub-category panel ---
+  if (selectedService === 'EC2_PANEL') {
+    return (
+      <div className="flex flex-column gap-4">
+        <Toast ref={toast} />
+        <div className="flex align-items-center gap-2">
+          <Button
+            icon="pi pi-arrow-left"
+            label="Back to Services"
+            className="p-button-text"
+            onClick={handleBackToServices}
+            style={{ color: '#a5b4fc' }}
+          />
+          <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
+            <i className="pi pi-server mr-1" style={{ color: '#667eea' }} />
+            EC2 Dashboard
+          </span>
+        </div>
+
+        {/* Region selector */}
+        <div className="flex align-items-center gap-2">
+          <i className="pi pi-map-marker" style={{ color: '#94a3b8' }} />
+          <Dropdown
+            value={selectedRegion}
+            options={AWS_REGIONS}
+            onChange={(e) => setSelectedRegion(e.value)}
+            placeholder="Select a region…"
+            filter
+            filterPlaceholder="Search regions…"
+            style={{ minWidth: '260px' }}
+          />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem' }}>
+          {EC2_CATEGORIES.map((category) => (
+            <div key={category.name} style={{
+              background: '#1e293b',
+              border: `1px solid ${category.color}44`,
+              borderRadius: '14px',
+              padding: '1.25rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+            }}>
+              {/* Category header */}
+              <div className="flex align-items-center gap-2">
+                <div style={{
+                  width: '32px', height: '32px', borderRadius: '8px',
+                  background: `${category.color}22`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <i className={`pi ${category.icon}`} style={{ color: category.color, fontSize: '1rem' }} />
+                </div>
+                <span className="font-semibold" style={{ color: '#f1f5f9', fontSize: '0.95rem' }}>
+                  {category.name}
+                </span>
+              </div>
+              {/* Sub-items */}
+              <div className="flex flex-column gap-1">
+                {category.items.map((item) => (
+                  <div
+                    key={item.resourceType}
+                    onClick={() => handleEc2ItemClick(item.resourceType)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '0.5rem 0.75rem',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: '#0f172a',
+                      border: '1px solid #1e293b',
+                      transition: 'border-color 0.15s, background 0.15s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = category.color;
+                      e.currentTarget.style.background = `${category.color}11`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#1e293b';
+                      e.currentTarget.style.background = '#0f172a';
+                    }}
+                  >
+                    <div>
+                      <div className="font-medium" style={{ color: '#e2e8f0', fontSize: '0.875rem' }}>
+                        {item.label}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '1px' }}>
+                        {item.description}
+                      </div>
+                    </div>
+                    <i className="pi pi-chevron-right" style={{ color: '#475569', fontSize: '0.75rem' }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // --- Drill-down: resources for a specific service ---
+  if (selectedService) {
+    const isEc2SubResource = EC2_RESOURCE_TYPES.has(selectedService);
+    const tableHeader = (
+      <div className="flex justify-content-between align-items-center flex-wrap gap-3"
+           style={{ background: '#1e293b', padding: '0.75rem 1rem' }}>
+        <span className="text-lg font-semibold flex align-items-center gap-2" style={{ color: '#f1f5f9' }}>
+          <i className={`pi ${TYPE_ICON[selectedService] || 'pi-box'}`} style={{ color: '#818cf8' }} />
+          {selectedService}
+          <Badge value={serviceResources.length}
+            style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff' }} />
+        </span>
+        <span className="p-input-icon-left">
+          <i className="pi pi-search" />
+          <InputText
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            placeholder="Search resources…"
+            style={{ borderRadius: '20px' }}
+          />
+        </span>
+      </div>
+    );
+
+    const isVpc = selectedService === 'VPC';
+    const isEc2 = selectedService === 'EC2';
+    const hasExpansion = isVpc || isEc2;
+
+    // Determine breadcrumb label for back button
+    const backLabel = isEc2SubResource ? 'Back to EC2' : 'Back to Services';
+
+    return (
+      <div className="flex flex-column gap-4">
+        <Toast ref={toast} />
+        <div className="flex align-items-center gap-2 flex-wrap">
+          <Button
+            icon="pi pi-arrow-left"
+            label={backLabel}
+            className="p-button-text"
+            onClick={handleBack}
+            style={{ color: '#a5b4fc' }}
+          />
+          {isVpc && (
+            <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+              <i className="pi pi-info-circle mr-1" />
+              Click the expand icon on a row to view subnets, NAT Gateways, and Internet Gateways
+            </span>
+          )}
+          {isEc2 && (
+            <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+              <i className="pi pi-info-circle mr-1" />
+              Click the expand icon on a row to view all EC2 instance details
+            </span>
+          )}
+        </div>
+        {loadingResources ? (
+          <div className="flex justify-content-center align-items-center flex-column gap-2" style={{ minHeight: '200px' }}>
+            <ProgressSpinner style={{ width: '36px', height: '36px' }} strokeWidth="4" />
+            <span className="text-sm" style={{ color: '#94a3b8' }}>Loading resources…</span>
+          </div>
+        ) : (
+          <DataTable
+            value={serviceResources}
+            header={tableHeader}
+            globalFilter={globalFilter}
+            paginator
+            rows={10}
+            rowsPerPageOptions={[10, 25, 50]}
+            sortMode="multiple"
+            removableSort
+            stripedRows
+            expandedRows={hasExpansion ? expandedRows : undefined}
+            onRowToggle={hasExpansion ? (e) => setExpandedRows(e.data) : undefined}
+            rowExpansionTemplate={isVpc ? vpcExpansionTemplate : isEc2 ? ec2ExpansionTemplate : undefined}
+            dataKey="id"
+            emptyMessage={
+              <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
+                <i className="pi pi-inbox text-4xl" />
+                <span>No resources found for {selectedService}.</span>
+              </div>
+            }
+            style={{ borderRadius: '16px', overflow: 'hidden' }}
+          >
+            {hasExpansion && <Column expander style={{ width: '3rem' }} />}
+            <Column field="name" header="Name" sortable style={{ minWidth: '160px', fontWeight: 500 }} />
+            {isVpc && (
+              <Column field="id" header="VPC ID" sortable
+                body={(row) => (
+                  <span style={{ fontFamily: 'monospace', color: '#93c5fd', fontSize: '0.85rem' }}>{row.id}</span>
+                )}
+                style={{ minWidth: '160px' }} />
+            )}
+            {isEc2 && (
+              <Column field="id" header="Instance ID" sortable
+                body={(row) => (
+                  <span style={{ fontFamily: 'monospace', color: '#93c5fd', fontSize: '0.85rem' }}>{row.id}</span>
+                )}
+                style={{ minWidth: '160px' }} />
+            )}
+            <Column field="region" header={isEc2 ? 'Availability Zone' : 'Region'} sortable style={{ minWidth: '120px' }} />
+            <Column field="status" header="Status" body={statusTemplate} sortable style={{ minWidth: '110px' }} />
+            <Column header="Details" body={detailsTemplate} style={{ minWidth: '260px' }} />
+            <Column field="tags" header="Tags" body={tagsTemplate} style={{ minWidth: '220px' }} />
+          </DataTable>
+        )}
+      </div>
+    );
+  }
+
+  // --- Overview: service cards grid with search bar ---
+  const searchLower = serviceSearch.trim().toLowerCase();
+  // Filter out EC2 sub-types from the top-level cards (they appear inside the EC2 panel)
+  const topLevelSummary = summary.filter((s) => !EC2_RESOURCE_TYPES.has(s.type) || s.type === 'EC2');
+  const filteredSummary = searchLower
+    ? topLevelSummary.filter((s) => s.type.toLowerCase().includes(searchLower))
+    : topLevelSummary;
+
+  return (
+    <div className="flex flex-column gap-4">
+      <Toast ref={toast} />
+      <div className="flex align-items-center justify-content-between flex-wrap gap-3">
+        <div className="flex align-items-center gap-2">
+          <i className="pi pi-th-large" style={{ color: '#818cf8', fontSize: '1.2rem' }} />
+          <span className="text-lg font-semibold" style={{ color: '#f1f5f9' }}>
+            AWS Services
+          </span>
+          <Badge value={filteredSummary.length} style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff' }} />
+        </div>
+        <div className="flex align-items-center gap-3 flex-wrap">
+          <div className="flex align-items-center gap-2">
+            <i className="pi pi-map-marker" style={{ color: '#94a3b8' }} />
+            <Dropdown
+              value={selectedRegion}
+              options={AWS_REGIONS}
+              onChange={(e) => setSelectedRegion(e.value)}
+              placeholder="Select a region…"
+              filter
+              filterPlaceholder="Search regions…"
+              style={{ minWidth: '260px' }}
+            />
+          </div>
+          <span className="p-input-icon-left">
+            <i className="pi pi-search" />
+            <InputText
+              value={serviceSearch}
+              onChange={(e) => setServiceSearch(e.target.value)}
+              placeholder="Search services…"
+              style={{ borderRadius: '20px', minWidth: '220px' }}
+            />
+          </span>
+        </div>
+      </div>
+      {filteredSummary.length === 0 ? (
+        <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
+          <i className="pi pi-search text-4xl" />
+          <span>No services match "<strong>{serviceSearch}</strong>"</span>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+          gap: '1rem',
+        }}>
+          {filteredSummary.map((svc) => {
+            const icon = TYPE_ICON[svc.type] || 'pi-box';
+            const colorIdx = svc.type.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % TYPE_COLORS.length;
+            const color = TYPE_COLORS[colorIdx];
+            const isEc2Card = svc.type === 'EC2';
+            return (
+              <div
+                key={svc.type}
+                onClick={() => handleServiceClick(svc.type)}
+                style={{
+                  background: '#1e293b',
+                  border: isEc2Card ? `1px solid ${color}66` : '1px solid #334155',
+                  borderRadius: '14px',
+                  padding: '1.2rem 1rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.6rem',
+                  transition: 'border-color 0.2s, transform 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = color;
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = isEc2Card ? `${color}66` : '#334155';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                <div className="flex align-items-center gap-2">
+                  <div style={{
+                    width: '36px', height: '36px', borderRadius: '8px',
+                    background: `${color}22`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <i className={`pi ${icon}`} style={{ color, fontSize: '1.1rem' }} />
+                  </div>
+                  <span className="font-semibold text-sm" style={{ color: '#f1f5f9', lineHeight: '1.3' }}>
+                    {svc.type}
+                  </span>
+                </div>
+                <div className="flex align-items-center justify-content-between">
+                  <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>
+                    {isEc2Card ? 'Explore' : 'Resources'}
+                  </span>
+                  {isEc2Card ? (
+                    <span style={{
+                      background: `${color}33`, color,
+                      borderRadius: '20px', padding: '2px 10px',
+                      fontSize: '0.78rem', fontWeight: 600,
+                    }}>
+                      {EC2_CATEGORIES.length} categories
+                    </span>
+                  ) : (
+                    <span style={{
+                      background: `${color}33`, color,
+                      borderRadius: '20px', padding: '2px 10px',
+                      fontSize: '0.85rem', fontWeight: 700,
+                    }}>
+                      {svc.count}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+function FilteredResourcesView({ provider }) {
+  const toast = useRef(null);
+  const [resources, setResources] = useState([]);
+  const [resourceTypes, setResourceTypes] = useState([]);
+  const [selectedTypes, setSelectedTypes] = useState([]);
+  const [pendingTypes, setPendingTypes] = useState([]);
+  const [pendingRegion, setPendingRegion] = useState('us-east-1');
+  const [appliedRegion, setAppliedRegion] = useState(null);
+  const [loadingTypes, setLoadingTypes] = useState(true);
+  const [filtering, setFiltering] = useState(false);
+  const [hasApplied, setHasApplied] = useState(false);
+  const [error, setError] = useState(null);
+  const [globalFilter, setGlobalFilter] = useState('');
+
+  // On mount – only fetch the list of resource types, no resources yet
+  useEffect(() => {
+    getResourceTypes()
+      .then((r) => {
+        setResourceTypes(r.data.resource_types.map((t, i) => ({
+          label: t,
+          value: t,
+          color: TYPE_COLORS[i % TYPE_COLORS.length],
+          icon: TYPE_ICON[t] || 'pi-box',
+        })));
+      })
+      .catch((err) => {
+        setError(err?.response?.data?.detail || 'Failed to load resource types');
+      })
+      .finally(() => setLoadingTypes(false));
+  }, []);
+
+  const handleApply = useCallback(async () => {
+    if (!pendingTypes || pendingTypes.length === 0) return;
+    setFiltering(true);
+    setSelectedTypes(pendingTypes);
+    setAppliedRegion(provider === 'aws' ? pendingRegion : null);
+    setHasApplied(true);
+    try {
+      const res = await getResources(pendingTypes, provider === 'aws' ? pendingRegion : null);
+      setResources(res.data.resources);
+    } catch (err) {
+      const msg = err?.response?.data?.detail || 'Failed to load resources';
+      setError(msg);
+      toast.current?.show({
+        severity: 'error',
+        summary: 'Unable to retrieve resources',
+        detail: msg,
+        life: 15000,
+        sticky: false,
+      });
+    } finally {
+      setFiltering(false);
+    }
+  }, [pendingTypes, pendingRegion, provider]);
+
+  const handleClear = useCallback(() => {
+    setPendingTypes([]);
+    setSelectedTypes([]);
+    setPendingRegion('us-east-1');
+    setAppliedRegion(null);
+    setResources([]);
+    setHasApplied(false);
+    setGlobalFilter('');
+  }, []);
+
+  const typeOptionTemplate = (option) => (
+    <div className="flex align-items-center gap-2">
+      <i className={`pi ${option.icon}`} style={{ color: option.color }} />
+      <span>{option.label}</span>
+    </div>
+  );
+
+  if (loadingTypes) return (
+    <div className="flex justify-content-center align-items-center flex-column gap-3" style={{ minHeight: '300px' }}>
+      <ProgressSpinner style={{ width: '50px', height: '50px' }} strokeWidth="4" />
+      <span className="text-sm" style={{ color: '#94a3b8' }}>Loading resource types…</span>
+    </div>
+  );
+
+  if (error) return (
+    <>
+      <Toast ref={toast} />
+      <Message severity="error" text={error} className="w-full" />
+    </>
+  );
+
+  const header = (
+    <div className="flex justify-content-between align-items-center flex-wrap gap-3"
+         style={{ background: '#1e293b', padding: '0.75rem 1rem' }}>
+      <span className="text-lg font-semibold flex align-items-center gap-2" style={{ color: '#f1f5f9' }}>
+        <i className="pi pi-server" style={{ color: '#818cf8' }} />
+        {selectedTypes.length === 1 ? `${selectedTypes[0]} ` : selectedTypes.length > 1 ? `${selectedTypes.length} Types ` : ''}Resources
+        <Badge value={resources.length}
+          style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff' }} />
+      </span>
+      <span className="p-input-icon-left">
+        <i className="pi pi-search" />
+        <InputText
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          placeholder="Search resources…"
+          style={{ borderRadius: '20px' }}
+        />
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-column gap-4">
+      <Toast ref={toast} />
+      {/* Filter Panel */}
+      <Card
+        style={{
+          borderRadius: '16px',
+          background: '#1e293b',
+          border: '1px solid #334155',
+        }}
+      >
+        <div className="flex flex-column gap-3">
+          <div className="flex align-items-center gap-2 mb-1">
+            <i className="pi pi-filter" style={{ color: '#818cf8' }} />
+            <span className="font-semibold" style={{ color: '#f1f5f9' }}>Select Resource Types</span>
+          </div>
+          <div className="flex flex-wrap align-items-end gap-3">
+            {provider === 'aws' && (
+              <div className="flex flex-column gap-1" style={{ minWidth: '220px' }}>
+                <label className="text-sm" style={{ color: '#94a3b8' }}>Region</label>
+                <Dropdown
+                  value={pendingRegion}
+                  options={AWS_REGIONS}
+                  onChange={(e) => setPendingRegion(e.value)}
+                  placeholder="Select a region…"
+                  filter
+                  filterPlaceholder="Search regions…"
+                  style={{ borderRadius: '10px', minWidth: '260px' }}
+                  panelStyle={{ borderRadius: '12px' }}
+                />
+              </div>
+            )}
+            <div className="flex flex-column gap-1 flex-1" style={{ minWidth: '220px' }}>
+              <label className="text-sm" style={{ color: '#94a3b8' }}>
+                Choose one or more resource types to view
+              </label>
+              <MultiSelect
+                value={pendingTypes}
+                options={resourceTypes}
+                onChange={(e) => setPendingTypes(e.value)}
+                itemTemplate={typeOptionTemplate}
+                placeholder="Select resource types…"
+                filter
+                filterPlaceholder="Search types…"
+                showClear
+                display="chip"
+                maxSelectedLabels={3}
+                style={{ borderRadius: '10px', minWidth: '260px' }}
+                panelStyle={{ borderRadius: '12px' }}
+              />
+            </div>
+            <Button
+              label="Apply"
+              icon="pi pi-check"
+              onClick={handleApply}
+              loading={filtering}
+              disabled={!pendingTypes || pendingTypes.length === 0}
+              style={{
+                borderRadius: '10px',
+                background: pendingTypes && pendingTypes.length > 0
+                  ? 'linear-gradient(135deg,#667eea,#764ba2)'
+                  : '#334155',
+                border: 'none',
+                fontWeight: 600,
+              }}
+            />
+            {hasApplied && (
+              <Button
+                label="Clear"
+                icon="pi pi-times"
+                className="p-button-outlined"
+                onClick={handleClear}
+                style={{ borderRadius: '10px', borderColor: '#475569', color: '#94a3b8' }}
+              />
+            )}
+          </div>
+          {hasApplied && selectedTypes.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {selectedTypes.map((t) => (
+                <div key={t} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: '#312e81', color: '#a5b4fc', fontSize: '0.8rem', fontWeight: 600,
+                }}>
+                  <i className="pi pi-filter" style={{ fontSize: '0.78rem' }} />
+                  {t}
+                </div>
+              ))}
+              {appliedRegion && (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: '#1e3a5f', color: '#93c5fd', fontSize: '0.8rem', fontWeight: 600,
+                }}>
+                  <i className="pi pi-map-marker" style={{ fontSize: '0.78rem' }} />
+                  {appliedRegion}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Resources Table — only shown after Apply is clicked */}
+      {!hasApplied ? (
+        <div className="flex flex-column align-items-center justify-content-center gap-3 py-8"
+             style={{
+               background: '#1e293b', borderRadius: '16px', border: '1px solid #334155',
+               minHeight: '280px',
+             }}>
+          <i className="pi pi-filter" style={{ fontSize: '3rem', color: '#4c1d95' }} />
+          <span className="text-xl font-semibold" style={{ color: '#f1f5f9' }}>
+            Select Resource Types
+          </span>
+          <span className="text-center" style={{ color: '#94a3b8', maxWidth: '340px' }}>
+            {provider === 'aws'
+              ? 'Choose a region and one or more resource types from above, then click '
+              : 'Choose one or more resource types from above, then click '}
+            <strong style={{ color: '#a5b4fc' }}>Apply</strong> to view resources.
+          </span>
+        </div>
+      ) : filtering ? (
+        <div className="flex justify-content-center align-items-center flex-column gap-2" style={{ minHeight: '200px' }}>
+          <ProgressSpinner style={{ width: '36px', height: '36px' }} strokeWidth="4" />
+          <span className="text-sm" style={{ color: '#94a3b8' }}>Loading resources…</span>
+        </div>
+      ) : (
+        <DataTable
+          value={resources}
+          header={header}
+          globalFilter={globalFilter}
+          paginator
+          rows={10}
+          rowsPerPageOptions={[10, 25, 50]}
+          sortMode="multiple"
+          removableSort
+          stripedRows
+          emptyMessage={
+            <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
+              <i className="pi pi-inbox text-4xl" />
+              <span>{`No resources found for the selected type(s).`}</span>
+            </div>
+          }
+          style={{ borderRadius: '16px', overflow: 'hidden' }}
+        >
+          <Column field="name" header="Name" sortable style={{ minWidth: '160px', fontWeight: 500 }} />
+          <Column field="type" header="Type" body={typeTemplate} sortable style={{ minWidth: '150px' }} />
+          <Column field="region" header="Region" sortable style={{ minWidth: '120px' }} />
+          <Column field="status" header="Status" body={statusTemplate} sortable style={{ minWidth: '110px' }} />
+          <Column field="tags" header="Tags" body={tagsTemplate} style={{ minWidth: '220px' }} />
+        </DataTable>
+      )}
+    </div>
+  );
+}
