@@ -1424,6 +1424,35 @@ const VPC_RESOURCE_TYPES = new Set([
   'Mirror Session', 'Mirror Target', 'Mirror Filter',
 ]);
 
+// Map of sub-resource type → parent panel info (for search results)
+const SUB_RESOURCE_META = {};
+EC2_CATEGORIES.forEach((cat) => {
+  cat.items.forEach((item) => {
+    if (!SUB_RESOURCE_META[item.resourceType]) {
+      SUB_RESOURCE_META[item.resourceType] = { parent: 'EC2', panel: 'EC2_PANEL', label: item.label };
+    }
+  });
+});
+VPC_CATEGORIES.forEach((cat) => {
+  cat.items.forEach((item) => {
+    if (!SUB_RESOURCE_META[item.resourceType]) {
+      SUB_RESOURCE_META[item.resourceType] = { parent: 'VPC', panel: 'VPC_PANEL', label: item.label };
+    }
+  });
+});
+
+const AWS_SERVICE_CATEGORIES = [
+  { name: 'Compute', icon: 'pi-server', color: '#f97316', services: ['EC2', 'ECS', 'EKS', 'Lambda'] },
+  { name: 'Storage', icon: 'pi-database', color: '#f59e0b', services: ['S3', 'EFS', 'ECR', 'ECR Public'] },
+  { name: 'Database', icon: 'pi-table', color: '#06b6d4', services: ['RDS', 'DynamoDB', 'ElastiCache', 'OpenSearch', 'MSK'] },
+  { name: 'Networking', icon: 'pi-sitemap', color: '#8b5cf6', services: ['VPC', 'ELB', 'Route 53', 'API Gateway'] },
+  { name: 'Security & Identity', icon: 'pi-shield', color: '#ef4444', services: ['KMS', 'Secrets Manager', 'WAF', 'Cognito'] },
+  { name: 'Analytics', icon: 'pi-chart-bar', color: '#3b82f6', services: ['Athena', 'Glue', 'QuickSight', 'X-Ray'] },
+  { name: 'Management & Monitoring', icon: 'pi-cog', color: '#10b981', services: ['CloudWatch', 'CloudFormation', 'CloudTrail', 'EventBridge'] },
+  { name: 'Messaging & Integration', icon: 'pi-send', color: '#a855f7', services: ['SNS', 'SQS', 'SES', 'Step Functions'] },
+  { name: 'Developer Tools', icon: 'pi-code', color: '#ec4899', services: ['CodeBuild', 'CodePipeline', 'Transfer Family', 'Location Service'] },
+];
+
 function AwsResourcesView() {
   const toast = useRef(null);
   const [summary, setSummary] = useState([]);
@@ -1514,8 +1543,8 @@ function AwsResourcesView() {
       resetDrillDown('EC2_PANEL');
       return;
     }
-    // If viewing a VPC sub-resource, go back to VPC panel
-    if (VPC_RESOURCE_TYPES.has(selectedService) && selectedService !== 'VPC') {
+    // If viewing a VPC sub-resource (or VPC itself via VPC panel), go back to VPC panel
+    if (VPC_RESOURCE_TYPES.has(selectedService)) {
       resetDrillDown('VPC_PANEL');
       return;
     }
@@ -1745,7 +1774,7 @@ function AwsResourcesView() {
   // --- Drill-down: resources for a specific service ---
   if (selectedService) {
     const isEc2SubResource = EC2_RESOURCE_TYPES.has(selectedService);
-    const isVpcSubResource = VPC_RESOURCE_TYPES.has(selectedService) && selectedService !== 'VPC';
+    const isVpcSubResource = VPC_RESOURCE_TYPES.has(selectedService);
     const tableHeader = (
       <div className="flex justify-content-between align-items-center flex-wrap gap-3"
            style={{ background: '#1e293b', padding: '0.75rem 1rem' }}>
@@ -1859,9 +1888,113 @@ function AwsResourcesView() {
     (!EC2_RESOURCE_TYPES.has(s.type) || s.type === 'EC2') &&
     (!VPC_RESOURCE_TYPES.has(s.type) || s.type === 'VPC')
   );
+  // When searching, also include matching sub-resources (EC2/VPC sub-types)
+  const subResourceSummary = searchLower
+    ? summary.filter((s) =>
+        ((EC2_RESOURCE_TYPES.has(s.type) && s.type !== 'EC2') ||
+         (VPC_RESOURCE_TYPES.has(s.type) && s.type !== 'VPC')) &&
+        s.type.toLowerCase().includes(searchLower)
+      )
+    : [];
   const filteredSummary = searchLower
-    ? topLevelSummary.filter((s) => s.type.toLowerCase().includes(searchLower))
+    ? [
+        ...topLevelSummary.filter((s) => s.type.toLowerCase().includes(searchLower)),
+        ...subResourceSummary,
+      ]
     : topLevelSummary;
+
+  const renderServiceCard = (svc, overrideColor) => {
+    const icon = TYPE_ICON[svc.type] || 'pi-box';
+    const colorIdx = svc.type.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % TYPE_COLORS.length;
+    const color = overrideColor || TYPE_COLORS[colorIdx];
+    const isEc2Card = svc.type === 'EC2';
+    const isVpcCard = svc.type === 'VPC';
+    const isPanelCard = isEc2Card || isVpcCard;
+    const subMeta = SUB_RESOURCE_META[svc.type];
+    return (
+      <div
+        key={svc.type}
+        onClick={() => {
+          if (subMeta) {
+            loadResources(svc.type);
+          } else {
+            handleServiceClick(svc.type);
+          }
+        }}
+        style={{
+          background: '#1e293b',
+          border: isPanelCard ? `1px solid ${color}66` : '1px solid #334155',
+          borderRadius: '12px',
+          padding: '1rem 0.9rem',
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.6rem',
+          transition: 'border-color 0.2s, transform 0.15s, box-shadow 0.2s',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = color;
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow = `0 4px 20px ${color}22`;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = isPanelCard ? `${color}66` : '#334155';
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+      >
+        <div className="flex align-items-center gap-2">
+          <div style={{
+            width: '34px', height: '34px', borderRadius: '8px',
+            background: `${color}22`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <i className={`pi ${icon}`} style={{ color, fontSize: '1rem' }} />
+          </div>
+          <div className="flex flex-column" style={{ flex: 1, minWidth: 0 }}>
+            <span className="font-semibold" style={{ color: '#f1f5f9', fontSize: '0.85rem', lineHeight: '1.3' }}>
+              {svc.type}
+            </span>
+            {subMeta && (
+              <span style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '1px' }}>
+                via {subMeta.parent}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex align-items-center justify-content-between">
+          <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
+            {isPanelCard ? 'Sub-categories' : 'Resources'}
+          </span>
+          {isEc2Card ? (
+            <span style={{
+              background: `${color}22`, color,
+              borderRadius: '20px', padding: '2px 8px',
+              fontSize: '0.72rem', fontWeight: 600,
+            }}>
+              {EC2_CATEGORIES.length} groups
+            </span>
+          ) : isVpcCard ? (
+            <span style={{
+              background: `${color}22`, color,
+              borderRadius: '20px', padding: '2px 8px',
+              fontSize: '0.72rem', fontWeight: 600,
+            }}>
+              {VPC_CATEGORIES.length} groups
+            </span>
+          ) : (
+            <span style={{
+              background: `${color}22`, color,
+              borderRadius: '20px', padding: '2px 8px',
+              fontSize: '0.82rem', fontWeight: 700,
+            }}>
+              {svc.count}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-column gap-4">
@@ -1898,94 +2031,100 @@ function AwsResourcesView() {
           </span>
         </div>
       </div>
-      {filteredSummary.length === 0 ? (
-        <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
-          <i className="pi pi-search text-4xl" />
-          <span>No services match "<strong>{serviceSearch}</strong>"</span>
+      {!searchLower ? (
+        // Categorized view
+        <div className="flex flex-column gap-5">
+          {(() => {
+            const summaryMap = Object.fromEntries(topLevelSummary.map((s) => [s.type, s]));
+            const categorized = new Set();
+            return (
+              <>
+                {AWS_SERVICE_CATEGORIES.map((cat) => {
+                  const catServices = cat.services
+                    .map((t) => summaryMap[t])
+                    .filter(Boolean);
+                  if (catServices.length === 0) return null;
+                  catServices.forEach((s) => categorized.add(s.type));
+                  return (
+                    <div key={cat.name}>
+                      <div className="flex align-items-center gap-2 mb-3"
+                        style={{ borderBottom: `2px solid ${cat.color}33`, paddingBottom: '0.5rem' }}>
+                        <div style={{
+                          width: '28px', height: '28px', borderRadius: '6px',
+                          background: `${cat.color}22`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <i className={`pi ${cat.icon}`} style={{ color: cat.color, fontSize: '0.9rem' }} />
+                        </div>
+                        <span className="font-semibold" style={{ color: '#cbd5e1', fontSize: '0.95rem' }}>
+                          {cat.name}
+                        </span>
+                        <span style={{
+                          background: `${cat.color}22`, color: cat.color,
+                          borderRadius: '12px', padding: '1px 8px',
+                          fontSize: '0.75rem', fontWeight: 600,
+                        }}>
+                          {catServices.length}
+                        </span>
+                      </div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+                        gap: '0.75rem',
+                      }}>
+                        {catServices.map((svc) => renderServiceCard(svc, cat.color))}
+                      </div>
+                    </div>
+                  );
+                })}
+                {(() => {
+                  const uncategorized = topLevelSummary.filter((s) => !categorized.has(s.type));
+                  if (uncategorized.length === 0) return null;
+                  return (
+                    <div key="other">
+                      <div className="flex align-items-center gap-2 mb-3"
+                        style={{ borderBottom: '2px solid #33415533', paddingBottom: '0.5rem' }}>
+                        <div style={{
+                          width: '28px', height: '28px', borderRadius: '6px',
+                          background: '#33415522',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <i className="pi pi-box" style={{ color: '#94a3b8', fontSize: '0.9rem' }} />
+                        </div>
+                        <span className="font-semibold" style={{ color: '#cbd5e1', fontSize: '0.95rem' }}>
+                          Other Services
+                        </span>
+                      </div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+                        gap: '0.75rem',
+                      }}>
+                        {uncategorized.map((svc) => renderServiceCard(svc))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            );
+          })()}
         </div>
       ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-          gap: '1rem',
-        }}>
-          {filteredSummary.map((svc) => {
-            const icon = TYPE_ICON[svc.type] || 'pi-box';
-            const colorIdx = svc.type.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % TYPE_COLORS.length;
-            const color = TYPE_COLORS[colorIdx];
-            const isEc2Card = svc.type === 'EC2';
-            const isVpcCard = svc.type === 'VPC';
-            const isPanelCard = isEc2Card || isVpcCard;
-            return (
-              <div
-                key={svc.type}
-                onClick={() => handleServiceClick(svc.type)}
-                style={{
-                  background: '#1e293b',
-                  border: isPanelCard ? `1px solid ${color}66` : '1px solid #334155',
-                  borderRadius: '14px',
-                  padding: '1.2rem 1rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.6rem',
-                  transition: 'border-color 0.2s, transform 0.15s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = color;
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = isPanelCard ? `${color}66` : '#334155';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                <div className="flex align-items-center gap-2">
-                  <div style={{
-                    width: '36px', height: '36px', borderRadius: '8px',
-                    background: `${color}22`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <i className={`pi ${icon}`} style={{ color, fontSize: '1.1rem' }} />
-                  </div>
-                  <span className="font-semibold text-sm" style={{ color: '#f1f5f9', lineHeight: '1.3' }}>
-                    {svc.type}
-                  </span>
-                </div>
-                <div className="flex align-items-center justify-content-between">
-                  <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>
-                    {isPanelCard ? 'Explore' : 'Resources'}
-                  </span>
-                  {isEc2Card ? (
-                    <span style={{
-                      background: `${color}33`, color,
-                      borderRadius: '20px', padding: '2px 10px',
-                      fontSize: '0.78rem', fontWeight: 600,
-                    }}>
-                      {EC2_CATEGORIES.length} categories
-                    </span>
-                  ) : isVpcCard ? (
-                    <span style={{
-                      background: `${color}33`, color,
-                      borderRadius: '20px', padding: '2px 10px',
-                      fontSize: '0.78rem', fontWeight: 600,
-                    }}>
-                      {VPC_CATEGORIES.length} categories
-                    </span>
-                  ) : (
-                    <span style={{
-                      background: `${color}33`, color,
-                      borderRadius: '20px', padding: '2px 10px',
-                      fontSize: '0.85rem', fontWeight: 700,
-                    }}>
-                      {svc.count}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        // Search results: flat grid
+        filteredSummary.length === 0 ? (
+          <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
+            <i className="pi pi-search text-4xl" />
+            <span>No services match "<strong>{serviceSearch}</strong>"</span>
+          </div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+            gap: '0.75rem',
+          }}>
+            {filteredSummary.map((svc) => renderServiceCard(svc))}
+          </div>
+        )
       )}
     </div>
   );
