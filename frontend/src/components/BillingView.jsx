@@ -103,7 +103,7 @@ export default function BillingView({ provider }) {
   const [pendingStart, setPendingStart] = useState(defStart);
   const [pendingEnd, setPendingEnd] = useState(defEnd);
   const [pendingTypes, setPendingTypes] = useState([]);
-  const [pendingRegion, setPendingRegion] = useState('us-east-1');
+  const [pendingRegion, setPendingRegion] = useState('');
   const [pendingBqProject, setPendingBqProject] = useState(null);
 
   // Applied state used in API calls
@@ -469,7 +469,7 @@ export default function BillingView({ provider }) {
               {type}
             </span>
           ))}
-          {appliedRegion && (
+          {provider === 'aws' && (
             <span
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '6px',
@@ -478,7 +478,7 @@ export default function BillingView({ provider }) {
               }}
             >
               <i className="pi pi-map-marker" style={{ fontSize: '0.78rem' }} />
-              {appliedRegion}
+              {appliedRegion || 'All Regions'}
             </span>
           )}
           {appliedBqProject && (
