@@ -11,6 +11,7 @@ import { Badge } from 'primereact/badge';
 import { Toast } from 'primereact/toast';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell,
 } from 'recharts';
 import {
   getOverallBilling,
@@ -45,6 +46,52 @@ function defaultRange() {
   const start = new Date(today.getFullYear(), today.getMonth(), 1);
   return { start, end: today };
 }
+
+// Quick date preset ranges
+const DATE_PRESETS = [
+  {
+    label: 'This Month',
+    icon: 'pi-calendar',
+    getRange: () => {
+      const today = new Date();
+      return { start: new Date(today.getFullYear(), today.getMonth(), 1), end: today };
+    },
+  },
+  {
+    label: 'Last Month',
+    icon: 'pi-calendar-minus',
+    getRange: () => {
+      const today = new Date();
+      const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const end = new Date(today.getFullYear(), today.getMonth(), 0);
+      return { start, end };
+    },
+  },
+  {
+    label: 'Last 3 Months',
+    icon: 'pi-history',
+    getRange: () => {
+      const today = new Date();
+      return { start: new Date(today.getFullYear(), today.getMonth() - 2, 1), end: today };
+    },
+  },
+  {
+    label: 'Last 6 Months',
+    icon: 'pi-history',
+    getRange: () => {
+      const today = new Date();
+      return { start: new Date(today.getFullYear(), today.getMonth() - 5, 1), end: today };
+    },
+  },
+  {
+    label: 'This Year',
+    icon: 'pi-calendar-plus',
+    getRange: () => {
+      const today = new Date();
+      return { start: new Date(today.getFullYear(), 0, 1), end: today };
+    },
+  },
+];
 
 const TYPE_ICON = {
   EC2: 'pi-server', S3: 'pi-database', RDS: 'pi-database', Lambda: 'pi-bolt',
@@ -303,6 +350,47 @@ export default function BillingView({ provider }) {
           border: '1px solid #334155',
         }}
       >
+        {/* Quick date presets */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <span className="text-xs font-semibold align-self-center" style={{ color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Quick Select:
+          </span>
+          {DATE_PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              onClick={() => {
+                const { start, end } = preset.getRange();
+                setPendingStart(start);
+                setPendingEnd(end);
+              }}
+              style={{
+                background: '#0f172a',
+                border: '1px solid #334155',
+                borderRadius: '20px',
+                color: '#94a3b8',
+                fontSize: '0.78rem',
+                fontWeight: 500,
+                padding: '4px 12px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'border-color 0.2s, color 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#818cf8';
+                e.currentTarget.style.color = '#a5b4fc';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#334155';
+                e.currentTarget.style.color = '#94a3b8';
+              }}
+            >
+              <i className={`pi ${preset.icon}`} style={{ fontSize: '0.72rem' }} />
+              {preset.label}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-wrap gap-4 align-items-end">
           {/* Date range */}
           <div className="flex flex-column gap-1">
@@ -685,31 +773,72 @@ export default function BillingView({ provider }) {
         <>
           <Divider />
           <Card style={{ borderRadius: '16px', background: '#1e293b', border: '1px solid #334155' }}>
-            <div className="font-semibold text-lg mb-3 flex align-items-center gap-2" style={{ color: '#f1f5f9' }}>
-              <i className="pi pi-list" style={{ color: '#818cf8' }} />
+            <div className="font-semibold text-lg mb-4 flex align-items-center gap-2" style={{ color: '#f1f5f9' }}>
+              <i className="pi pi-chart-pie" style={{ color: '#818cf8' }} />
               Cost Breakdown by Service
               <Badge value={overall.breakdown.length}
                 style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff' }} />
             </div>
-            <div className="flex flex-column gap-3">
-              {overall.breakdown.map((item, idx) => {
-                const pct = overall.total > 0 ? (item.cost / overall.total) * 100 : 0;
-                const color = TYPE_COLORS[idx % TYPE_COLORS.length];
-                return (
-                  <div key={item.service} className="flex align-items-center gap-3">
-                    <span className="font-medium flex-shrink-0 flex align-items-center gap-2"
-                      style={{ color: '#e2e8f0', width: '11rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <i className={`pi ${TYPE_ICON[item.service] || 'pi-box'}`} style={{ color }} />
-                      {item.service}
-                    </span>
-                    <div className="flex-1" style={{ background: '#334155', borderRadius: '99px', height: '10px' }}>
-                      <div style={{ width: `${pct}%`, background: `linear-gradient(90deg,${color},${color}aa)`, borderRadius: '99px', height: '100%', transition: 'width 0.5s ease' }} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px,1fr) auto', gap: '2rem', alignItems: 'start' }}>
+              {/* Left: progress bars */}
+              <div className="flex flex-column gap-3">
+                {overall.breakdown.map((item, idx) => {
+                  const pct = overall.total > 0 ? (item.cost / overall.total) * 100 : 0;
+                  const color = TYPE_COLORS[idx % TYPE_COLORS.length];
+                  return (
+                    <div key={item.service} className="flex align-items-center gap-3">
+                      <div
+                        style={{
+                          width: '8px', height: '8px', borderRadius: '50%',
+                          background: color, flexShrink: 0,
+                        }}
+                      />
+                      <span className="font-medium flex-shrink-0 flex align-items-center gap-2"
+                        style={{ color: '#e2e8f0', width: '10rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
+                        <i className={`pi ${TYPE_ICON[item.service] || 'pi-box'}`} style={{ color }} />
+                        {item.service}
+                      </span>
+                      <div className="flex-1" style={{ background: '#334155', borderRadius: '99px', height: '8px' }}>
+                        <div style={{ width: `${pct}%`, background: `linear-gradient(90deg,${color},${color}aa)`, borderRadius: '99px', height: '100%', transition: 'width 0.5s ease' }} />
+                      </div>
+                      <span className="text-right font-semibold" style={{ color: '#f1f5f9', minWidth: '5rem', fontSize: '0.85rem' }}>{fmtCost(item.cost, overall.currency)}</span>
+                      <span className="text-sm text-right" style={{ color: '#64748b', minWidth: '3rem' }}>{pct.toFixed(1)}%</span>
                     </div>
-                    <span className="text-right font-semibold" style={{ color: '#f1f5f9', minWidth: '5rem' }}>{fmtCost(item.cost, overall.currency)}</span>
-                    <span className="text-sm text-right" style={{ color: '#64748b', minWidth: '3rem' }}>{pct.toFixed(1)}%</span>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+              {/* Right: donut chart */}
+              <div style={{ width: '220px', flexShrink: 0 }}>
+                <ResponsiveContainer width={220} height={220}>
+                  <PieChart>
+                    <Pie
+                      data={overall.breakdown.slice(0, 10).map((item, idx) => ({
+                        name: item.service,
+                        value: item.cost,
+                        color: TYPE_COLORS[idx % TYPE_COLORS.length],
+                      }))}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {overall.breakdown.slice(0, 10).map((_, idx) => (
+                        <Cell key={idx} fill={TYPE_COLORS[idx % TYPE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v) => [fmtCost(v, overall.currency)]}
+                      contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#f1f5f9' }}
+                      itemStyle={{ color: '#e2e8f0' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="text-center mt-1">
+                  <div style={{ color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top 10 Services</div>
+                </div>
+              </div>
             </div>
           </Card>
         </>

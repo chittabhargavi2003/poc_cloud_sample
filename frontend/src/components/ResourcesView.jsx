@@ -2152,6 +2152,61 @@ function AwsResourcesView() {
   return (
     <div className="flex flex-column gap-4">
       <Toast ref={toast} />
+
+      {/* ── Summary header card ── */}
+      {!searchLower && (
+        <div style={{
+          background: '#1e293b',
+          border: '1px solid #334155',
+          borderRadius: '16px',
+          padding: '1rem 1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1rem',
+        }}>
+          <div className="flex align-items-center gap-3">
+            <div style={{
+              width: '44px', height: '44px', borderRadius: '12px',
+              background: 'linear-gradient(135deg,#FF9900,#e07b00)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              boxShadow: '0 4px 16px #FF990044',
+            }}>
+              <i className="pi pi-server" style={{ color: '#fff', fontSize: '1.25rem' }} />
+            </div>
+            <div>
+              <div className="font-bold" style={{ color: '#f1f5f9', fontSize: '1rem' }}>AWS Resources</div>
+              <div className="text-sm" style={{ color: '#94a3b8' }}>
+                <span style={{ background: '#FF990022', color: '#fb923c', borderRadius: '8px', padding: '1px 8px', fontFamily: 'monospace', fontWeight: 600, marginRight: '6px' }}>
+                  {selectedRegion}
+                </span>
+                {topLevelSummary.reduce((acc, s) => acc + (s.count || 0), 0).toLocaleString()} total resources across {topLevelSummary.length} services
+              </div>
+            </div>
+          </div>
+          {/* Category quick stats */}
+          <div className="flex gap-2 flex-wrap">
+            {AWS_SERVICE_CATEGORIES.slice(0, 4).map((cat) => {
+              const summaryMap = Object.fromEntries(topLevelSummary.map((s) => [s.type, s]));
+              const count = cat.services.reduce((a, t) => a + (summaryMap[t]?.count || 0), 0);
+              if (count === 0) return null;
+              return (
+                <div key={cat.name} style={{
+                  background: '#0f172a', border: '1px solid #334155',
+                  borderRadius: '10px', padding: '6px 12px',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}>
+                  <i className={`pi ${cat.icon}`} style={{ color: cat.color, fontSize: '0.8rem' }} />
+                  <span style={{ color: cat.color, fontWeight: 700, fontSize: '0.85rem' }}>{count}</span>
+                  <span style={{ color: '#64748b', fontSize: '0.72rem' }}>{cat.name}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="flex align-items-center justify-content-between flex-wrap gap-3">
         <div className="flex align-items-center gap-2">
           <i className="pi pi-th-large" style={{ color: '#818cf8', fontSize: '1.2rem' }} />
