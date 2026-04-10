@@ -2068,7 +2068,7 @@ function AwsResourcesView() {
       <div
         key={svc.type}
         onClick={() => {
-          if (subMeta) {
+          if (subMeta && !isPanelCard) {
             loadResources(svc.type);
           } else {
             handleServiceClick(svc.type);
