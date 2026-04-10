@@ -1964,6 +1964,14 @@ _ADMIN_POLICIES: frozenset[str] = frozenset({
     "PowerUserAccess",
 })
 
+# Number of consecutive inactive days before an IAM user account triggers a suggestion.
+_IAM_INACTIVE_THRESHOLD_DAYS: int = 90
+
+# Billing spend percentages used to classify severity in billing suggestions.
+_BILLING_SEVERITY_CRITICAL_PCT: float = 40.0
+_BILLING_SEVERITY_WARNING_PCT: float = 20.0
+_BILLING_SIGNIFICANT_SPEND_PCT: float = 10.0
+
 # Service-specific cost-reduction tips for billing suggestions.
 # Each entry: (tuple of lowercase keywords to match against the CE service name,
 #              short action title,
@@ -2600,9 +2608,13 @@ def _suggestions_from_billing(billing_data: dict) -> list[dict]:
         pct = round(cost / total * 100, 1) if total > 0 else 0
 
         # ── Significant spenders: generate a service-specific suggestion ──────
-        # Trigger for services that account for ≥ 10% of total spend.
-        if pct >= 10 and cost > 0:
-            severity = "critical" if pct >= 40 else "warning" if pct >= 20 else "info"
+        # Trigger for services that account for ≥ _BILLING_SIGNIFICANT_SPEND_PCT of total spend.
+        if pct >= _BILLING_SIGNIFICANT_SPEND_PCT and cost > 0:
+            severity = (
+                "critical" if pct >= _BILLING_SEVERITY_CRITICAL_PCT
+                else "warning" if pct >= _BILLING_SEVERITY_WARNING_PCT
+                else "info"
+            )
             tip = _match_service_cost_tip(svc)
             if tip:
                 action_title, recommendation = tip
@@ -2694,7 +2706,7 @@ def _suggestions_from_billing(billing_data: dict) -> list[dict]:
 
 def _suggestions_from_iam(iam_data: dict) -> list[dict]:
     """Analyse AWS IAM data and return security / hygiene suggestions."""
-    from datetime import datetime, timezone, timedelta  # noqa: PLC0415
+    from datetime import datetime, timezone  # noqa: PLC0415
 
     suggestions: list[dict] = []
 
@@ -2805,7 +2817,6 @@ def _suggestions_from_iam(iam_data: dict) -> list[dict]:
             ))
 
     # ── Inactive users: no console login for 90+ days ─────────────────────────
-    _INACTIVE_THRESHOLD_DAYS = 90
     now = datetime.now(timezone.utc)
     for user in users:
         last_used_raw = user.get("password_last_used", "")
@@ -2823,7 +2834,7 @@ def _suggestions_from_iam(iam_data: dict) -> list[dict]:
                 days_inactive = (now - last_used).days
             except (ValueError, TypeError):
                 continue
-        if days_inactive >= _INACTIVE_THRESHOLD_DAYS:
+        if days_inactive >= _IAM_INACTIVE_THRESHOLD_DAYS:
             suggestions.append(_aws_suggestion(
                 sid=f"iam-inactive-user-{user['name'][:40]}",
                 category="iam",
