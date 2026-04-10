@@ -119,7 +119,7 @@ function RowDetail({ data }) {
           <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginBottom: '4px' }}>
             RECOMMENDATION
           </div>
-          <div style={{ color: '#e2e8f0', fontSize: '0.85rem', lineHeight: 1.6 }}>
+          <div style={{ color: '#e2e8f0', fontSize: '0.85rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
             {data.recommendation}
           </div>
         </div>

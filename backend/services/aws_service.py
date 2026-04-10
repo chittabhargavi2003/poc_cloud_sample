@@ -1964,6 +1964,177 @@ _ADMIN_POLICIES: frozenset[str] = frozenset({
     "PowerUserAccess",
 })
 
+# Service-specific cost-reduction tips for billing suggestions.
+# Each entry: (tuple of lowercase keywords to match against the CE service name,
+#              short action title,
+#              detailed numbered recommendation).
+_SERVICE_COST_TIPS: list[tuple[tuple[str, ...], str, str]] = [
+    (
+        ("ec2", "elastic compute cloud"),
+        "Right-size instances and use Reserved/Spot capacity",
+        "1. Run AWS Compute Optimizer to identify over-provisioned instances and right-size them.\n"
+        "2. Purchase EC2 Reserved Instances (1- or 3-year) for steady-state workloads — savings up to 72%.\n"
+        "3. Use EC2 Spot Instances for fault-tolerant, batch, or dev/test workloads — savings up to 90%.\n"
+        "4. Enable EC2 Auto Scaling to scale down during off-peak hours automatically.\n"
+        "5. Terminate stopped instances or snapshot their EBS volumes — stopped instances still incur EBS charges.\n"
+        "6. Review large instance types (e.g. m5.4xlarge+) and verify CPU/memory utilisation in CloudWatch.",
+    ),
+    (
+        ("s3", "simple storage service"),
+        "Enable S3 Intelligent-Tiering and lifecycle policies",
+        "1. Enable S3 Intelligent-Tiering on buckets with unpredictable access patterns to move objects to cheaper tiers automatically.\n"
+        "2. Add lifecycle rules: transition objects to S3 Standard-IA after 30 days, Glacier Instant Retrieval after 90 days.\n"
+        "3. Create a lifecycle rule to abort incomplete multipart uploads after 7 days.\n"
+        "4. Configure non-current version expiration to remove stale object versions automatically.\n"
+        "5. Use S3 Storage Lens to get account-wide visibility into storage usage and activity.\n"
+        "6. Audit all buckets and delete data that is no longer required.",
+    ),
+    (
+        ("rds", "relational database"),
+        "Reserve RDS capacity, right-size instances, or use Aurora Serverless",
+        "1. Purchase RDS Reserved Instances for production databases — savings up to 69%.\n"
+        "2. Switch dev/test databases to Aurora Serverless v2 so they scale to zero when idle.\n"
+        "3. Use RDS Performance Insights to identify under-utilised instances and downsize them.\n"
+        "4. Disable Multi-AZ for non-production environments — reduces cost by approximately 50%.\n"
+        "5. Shorten automated backup retention to the minimum required by your compliance policy.\n"
+        "6. Enable storage autoscaling to avoid over-allocating a large fixed storage size at creation time.",
+    ),
+    (
+        ("lambda",),
+        "Tune Lambda memory and timeout, reduce unnecessary invocations",
+        "1. Use AWS Lambda Power Tuning to find the cheapest memory setting for each function.\n"
+        "2. Set the function timeout to the minimum needed plus a small buffer to prevent runaway executions.\n"
+        "3. Use SQS batch windows to reduce invocation frequency for queue-triggered functions.\n"
+        "4. Delete or disable Lambda functions that are no longer in use.\n"
+        "5. Switch to arm64 (Graviton2) architecture — up to 20% better price/performance for most runtimes.\n"
+        "6. Audit Lambda@Edge functions — they are billed per request at every CloudFront point of presence.",
+    ),
+    (
+        ("eks", "elastic kubernetes service"),
+        "Rightsize EKS nodes, use Spot capacity, and enable autoscaling",
+        "1. Deploy Karpenter or Cluster Autoscaler to scale nodes down to actual pod demand.\n"
+        "2. Use EC2 Spot Instances for non-critical node groups — savings up to 90%.\n"
+        "3. Set accurate CPU and memory requests on all pods to improve node bin-packing efficiency.\n"
+        "4. Use Fargate profiles for burstable workloads to avoid paying for idle EC2 node capacity.\n"
+        "5. Apply cost-allocation tags to identify expensive namespaces or teams.\n"
+        "6. Remove unused PersistentVolumeClaims and orphaned EBS volumes.",
+    ),
+    (
+        ("ecs", "elastic container service"),
+        "Use Fargate Spot, rightsize tasks, and enable ECS autoscaling",
+        "1. Use Fargate Spot for fault-tolerant or stateless tasks — savings up to 70%.\n"
+        "2. Review task CPU/memory definitions; right-size tasks that are consistently under-utilised.\n"
+        "3. Enable ECS Service Auto Scaling to reduce the desired count during off-peak periods.\n"
+        "4. Use Graviton2 instances for EC2-launch-type clusters for better price/performance.\n"
+        "5. Consolidate low-traffic services onto shared task definitions where possible.",
+    ),
+    (
+        ("elasticache",),
+        "Reserve ElastiCache nodes and rightsize the cluster",
+        "1. Purchase ElastiCache Reserved Nodes for production clusters — savings up to 55%.\n"
+        "2. Analyse cache hit rate and eviction metrics; a low hit rate suggests inefficient key design.\n"
+        "3. Downsize node types if memory utilisation is consistently below 50%.\n"
+        "4. Enable cluster mode to spread data across shards and use smaller, cheaper node types.\n"
+        "5. Disable Multi-AZ replication for non-production clusters.",
+    ),
+    (
+        ("dynamodb",),
+        "Optimise DynamoDB billing mode, indexes, and use TTL",
+        "1. Switch tables with unpredictable traffic to On-Demand billing to avoid paying for unused capacity.\n"
+        "2. For predictable, steady workloads use Provisioned capacity with Auto Scaling.\n"
+        "3. Enable Time-to-Live (TTL) to automatically delete expired items at no extra cost.\n"
+        "4. Audit Global Secondary Indexes and remove those that are unused or over-provisioned.\n"
+        "5. Use the DynamoDB Standard-IA table class for tables with lower access frequency.\n"
+        "6. Archive old items to S3 via DynamoDB Streams to keep hot tables lean.",
+    ),
+    (
+        ("cloudwatch",),
+        "Reduce log retention and remove unused alarms and dashboards",
+        "1. Set CloudWatch log group retention to the minimum required (e.g. 7–30 days for non-audit logs).\n"
+        "2. Export logs older than 30 days to S3 using subscription filters for cheap long-term storage.\n"
+        "3. Replace full log ingestion with metric filters for alerting to reduce ingestion volume.\n"
+        "4. Delete unused alarms, dashboards, and Contributor Insights rules.\n"
+        "5. Switch from 1-second high-resolution metrics to 1-minute standard metrics where precision is not critical.",
+    ),
+    (
+        ("elb", "load balancing", "elastic load"),
+        "Consolidate idle load balancers and remove unused targets",
+        "1. Identify and delete idle ALBs/NLBs with no active targets or traffic.\n"
+        "2. Consolidate multiple ALBs using host-based and path-based routing rules on a single load balancer.\n"
+        "3. Remove unused HTTPS listeners to reduce Load Balancer Capacity Unit (LCU) charges.\n"
+        "4. Use AWS Global Accelerator instead of maintaining NLBs in every region.",
+    ),
+    (
+        ("msk", "managed streaming"),
+        "Enable MSK tiered storage and rightsize brokers",
+        "1. Enable MSK Tiered Storage to offload cold partition data to S3 — significant storage savings.\n"
+        "2. Rightsize broker instance types based on CPU, network throughput, and disk I/O metrics.\n"
+        "3. Use MSK Serverless for variable or unpredictable Kafka workloads.\n"
+        "4. Reduce the replication factor for non-critical topics from 3 to 2.\n"
+        "5. Set topic retention (time and size) limits to prevent unbounded disk usage.",
+    ),
+    (
+        ("opensearch",),
+        "Move cold indices to UltraWarm/Cold storage and rightsize nodes",
+        "1. Move indices older than 30 days to UltraWarm storage — up to 90% cheaper than hot nodes.\n"
+        "2. Move rarely queried indices to OpenSearch Cold Storage for the lowest-cost retention.\n"
+        "3. Reduce the replica count for non-production domains.\n"
+        "4. Rightsize data nodes using JVM heap pressure and search latency metrics.\n"
+        "5. Enable Auto-Tune to let OpenSearch automatically optimise settings for cost and performance.",
+    ),
+    (
+        ("glue",),
+        "Optimise Glue DPU allocation and use Flex execution class",
+        "1. Profile Glue jobs and reduce DPU allocation — many jobs run well with 2–5 DPUs.\n"
+        "2. Use the Glue Flex execution class for non-time-sensitive ETL jobs — up to 34% savings.\n"
+        "3. Enable job bookmarks so Glue only processes new or changed data.\n"
+        "4. Replace heavy Glue jobs with incremental Athena queries where possible.\n"
+        "5. Delete unused crawlers, databases, and jobs from the Glue Data Catalog.",
+    ),
+    (
+        ("athena",),
+        "Partition data and use columnar formats to cut Athena scan costs",
+        "1. Partition tables by date or other high-cardinality dimensions to reduce bytes scanned per query.\n"
+        "2. Convert raw data to Parquet or ORC columnar format — reduces scanned bytes by up to 87%.\n"
+        "3. Enable Athena query result reuse to avoid re-running identical recent queries.\n"
+        "4. Use workgroup data usage controls to cap the scan volume per query.\n"
+        "5. Delete stale query result files from S3 query result locations on a regular schedule.",
+    ),
+    (
+        ("efs", "elastic file system"),
+        "Enable EFS lifecycle policies and remove idle filesystems",
+        "1. Enable EFS Intelligent-Tiering or a lifecycle policy to move files to EFS-IA after 30 days.\n"
+        "2. Identify and delete EFS filesystems not mounted by any instance or Lambda function.\n"
+        "3. Switch from EFS Standard to EFS One Zone for data that does not need multi-AZ durability.\n"
+        "4. Use EFS Access Points to isolate application data for easier lifecycle management.",
+    ),
+    (
+        ("vpc", "virtual private cloud", "nat gateway"),
+        "Remove idle NAT Gateways and replace with VPC endpoints",
+        "1. Delete unused NAT Gateways — each costs approximately $0.045/hr plus $0.045/GB data transfer.\n"
+        "2. Create VPC Gateway Endpoints for S3 and DynamoDB to eliminate data-transfer costs through NAT.\n"
+        "3. Review and delete idle VPC Interface Endpoints that are no longer in use.\n"
+        "4. Consolidate VPCs where possible to reduce the total number of NAT Gateways required.",
+    ),
+    (
+        ("api gateway",),
+        "Switch to HTTP API and enable caching where applicable",
+        "1. Migrate REST APIs to HTTP API where advanced features are not needed — up to 71% cost savings.\n"
+        "2. Enable API Gateway caching for frequently requested, idempotent endpoints.\n"
+        "3. Delete unused API stages, custom domain mappings, and deprecated deployments.\n"
+        "4. Use usage plans and request throttling to prevent unexpected traffic spikes.",
+    ),
+]
+
+
+def _match_service_cost_tip(svc_name: str) -> tuple[str, str] | None:
+    """Return (action_title, recommendation) for a known AWS service, or None."""
+    low = svc_name.lower()
+    for keywords, action, rec in _SERVICE_COST_TIPS:
+        if any(kw in low for kw in keywords):
+            return action, rec
+    return None
+
 
 def _aws_suggestion(
     sid: str,
@@ -2145,6 +2316,7 @@ def _suggestions_from_resources(resources: list[dict]) -> list[dict]:
             public_access_blocked = r.get("public_access_blocked")
             lifecycle_rules = r.get("lifecycle_rules") or 0
             versioning = r.get("versioning") or ""
+            storage_size = (r.get("storage_size") or r.get("size") or "").strip()
 
             # Security: public access not blocked
             if public_access_blocked is False:
@@ -2162,13 +2334,46 @@ def _suggestions_from_resources(resources: list[dict]) -> list[dict]:
                     ),
                     current_value="public_access_blocked: false",
                     recommendation=(
-                        "Enable all four Block Public Access settings on the bucket unless "
-                        "it is intentionally hosting a public static website."
+                        "1. Enable all four Block Public Access settings on the bucket unless it intentionally hosts a public static website.\n"
+                        "2. Use S3 bucket policies and ACLs to limit access to specific principals.\n"
+                        "3. Enable Amazon Macie to automatically discover and protect sensitive data in S3.\n"
+                        "4. Review the bucket's CORS configuration to ensure it does not expose sensitive data cross-origin."
+                    ),
+                ))
+
+            # Unused: bucket with no stored data
+            is_empty = (
+                not storage_size
+                or storage_size == "0.00 MB"
+                or storage_size == "0 MB"
+                or storage_size.startswith("0.00")
+            )
+            if is_empty:
+                suggestions.append(_aws_suggestion(
+                    sid=f"res-s3-empty-{name}",
+                    category="resources",
+                    severity="info",
+                    suggestion_type="underused",
+                    resource_name=name,
+                    resource_type=rtype,
+                    title=f"S3 bucket '{name}' appears to be empty",
+                    description=(
+                        f"S3 bucket '{name}' has no stored data. Empty buckets may represent "
+                        "forgotten resources left over from old projects or migrations. "
+                        "While an empty S3 bucket does not incur storage costs, associated "
+                        "requests and replication configurations may still generate charges."
+                    ),
+                    current_value=f"size: {storage_size or 'unknown (empty)'}",
+                    recommendation=(
+                        "1. Verify whether this bucket is still actively used by any application or process.\n"
+                        "2. If the bucket is no longer needed, delete it to remove an unnecessary attack surface.\n"
+                        "3. Check for any S3 Event Notifications, Replication rules, or Inventory configurations that may still be running.\n"
+                        "4. Use S3 Storage Lens to get account-wide visibility into bucket usage."
                     ),
                 ))
 
             # Cost: no lifecycle policy on a large or standard bucket
-            if lifecycle_rules == 0:
+            if lifecycle_rules == 0 and not is_empty:
                 suggestions.append(_aws_suggestion(
                     sid=f"res-s3-lifecycle-{name}",
                     category="resources",
@@ -2184,8 +2389,10 @@ def _suggestions_from_resources(resources: list[dict]) -> list[dict]:
                     ),
                     current_value="lifecycle_rules: 0",
                     recommendation=(
-                        "Add a lifecycle rule to transition objects to S3 Standard-IA after "
-                        "30 days, and to S3 Glacier after 90 days for archival cost savings."
+                        "1. Add a lifecycle rule to transition objects to S3 Standard-IA after 30 days.\n"
+                        "2. Transition to S3 Glacier Instant Retrieval after 90 days for archival cost savings.\n"
+                        "3. Enable S3 Intelligent-Tiering if the access pattern is unpredictable.\n"
+                        "4. Add a rule to delete incomplete multipart uploads after 7 days."
                     ),
                 ))
 
@@ -2205,8 +2412,9 @@ def _suggestions_from_resources(resources: list[dict]) -> list[dict]:
                     ),
                     current_value="versioning: Enabled, lifecycle_rules: 0",
                     recommendation=(
-                        "Add a lifecycle rule to expire non-current object versions after a "
-                        "reasonable retention period (e.g. 30 days)."
+                        "1. Add a lifecycle rule to expire non-current object versions after 30 days.\n"
+                        "2. Add a rule to permanently delete objects after a suitable retention period.\n"
+                        "3. Review the current storage size to understand the cost impact of accumulated versions."
                     ),
                 ))
 
@@ -2336,11 +2544,49 @@ def _suggestions_from_resources(resources: list[dict]) -> list[dict]:
                         "is not used."
                     ),
                 ))
+        # ── EFS File Systems ───────────────────────────────────────────────────
+        elif rtype == "EFS":
+            size_str = (r.get("size") or "").strip()
+            # EFS filesystem with no data stored (empty or unknown size)
+            is_empty = (
+                not size_str
+                or size_str == "0.0 GB"
+                or size_str == "0 GB"
+                or size_str.startswith("0.00")
+            )
+            if is_empty:
+                suggestions.append(_aws_suggestion(
+                    sid=f"res-efs-empty-{name}",
+                    category="resources",
+                    severity="info",
+                    suggestion_type="underused",
+                    resource_name=name,
+                    resource_type=rtype,
+                    title=f"EFS filesystem '{name}' appears to have no data stored",
+                    description=(
+                        f"EFS filesystem '{name}' reports no stored data. An idle filesystem "
+                        "that is not mounted by any instance or Lambda function still incurs "
+                        "the monthly storage minimum charge and wastes capacity."
+                    ),
+                    current_value=f"size: {size_str or 'unknown'}",
+                    recommendation=(
+                        "1. Check whether any EC2 instance or Lambda function still mounts this filesystem.\n"
+                        "2. If the filesystem is no longer needed, delete it to avoid ongoing charges.\n"
+                        "3. If data is expected, verify that the application is writing correctly.\n"
+                        "4. Enable EFS lifecycle policies so future data is automatically tiered to EFS-IA after 30 days."
+                    ),
+                ))
     return suggestions
 
 
 def _suggestions_from_billing(billing_data: dict) -> list[dict]:
-    """Analyse AWS billing data and return cost-optimisation suggestions."""
+    """Analyse AWS billing data and return cost-optimisation suggestions.
+
+    For services that are significant cost drivers the function emits a
+    service-specific suggestion with concrete, actionable steps tailored to
+    that service.  Generic fallback advice is used when no service-specific
+    tips are available.
+    """
     suggestions: list[dict] = []
 
     breakdown: list[dict] = billing_data.get("breakdown", [])
@@ -2348,34 +2594,50 @@ def _suggestions_from_billing(billing_data: dict) -> list[dict]:
     if not breakdown or total <= 0:
         return suggestions
 
-    # Top spender > 50% of total
     for item in breakdown:
         svc = item.get("service", "Unknown")
         cost = item.get("cost", 0.0)
         pct = round(cost / total * 100, 1) if total > 0 else 0
-        if pct > 50:
-            suggestions.append(_aws_suggestion(
-                sid=f"bill-top-{svc.replace(' ', '_').lower()[:40]}",
-                category="billing",
-                severity="warning",
-                suggestion_type="overused",
-                resource_name=svc,
-                resource_type="Billing",
-                title=f"'{svc}' accounts for {pct}% of total spend",
-                description=(
+
+        # ── Significant spenders: generate a service-specific suggestion ──────
+        # Trigger for services that account for ≥ 10% of total spend.
+        if pct >= 10 and cost > 0:
+            severity = "critical" if pct >= 40 else "warning" if pct >= 20 else "info"
+            tip = _match_service_cost_tip(svc)
+            if tip:
+                action_title, recommendation = tip
+                title = f"'{svc}' is a top cost driver ({pct}% of spend) — {action_title}"
+                description = (
+                    f"'{svc}' accounts for {pct}% (${cost:.2f}) of the ${total:.2f} total spend. "
+                    "Review the steps below to reduce this service's cost."
+                )
+            else:
+                title = f"'{svc}' accounts for {pct}% of total spend"
+                description = (
                     f"The service '{svc}' is responsible for {pct}% (${cost:.2f}) of the "
                     f"${total:.2f} total spend. A high concentration of spend in one service "
                     "may indicate over-provisioning or unoptimised usage."
-                ),
-                current_value=f"${cost:.2f} / ${total:.2f} total ({pct}%)",
-                recommendation=(
+                )
+                recommendation = (
                     "Review resource utilisation for this service in CloudWatch. "
-                    "Consider Reserved Instances or Savings Plans for predictable workloads."
-                ),
+                    "Consider Reserved Instances or Savings Plans for predictable workloads. "
+                    "Use AWS Cost Explorer to drill into usage dimensions and identify waste."
+                )
+            suggestions.append(_aws_suggestion(
+                sid=f"bill-top-{svc.replace(' ', '_').lower()[:40]}",
+                category="billing",
+                severity=severity,
+                suggestion_type="overused",
+                resource_name=svc,
+                resource_type="Billing",
+                title=title,
+                description=description,
+                current_value=f"${cost:.2f} / ${total:.2f} total ({pct}%)",
+                recommendation=recommendation,
             ))
 
-        # Near-zero spend – possibly a forgotten resource
-        if 0 < cost < 1.0:
+        # ── Near-zero spend: possibly a forgotten / lingering resource ────────
+        elif 0 < cost < 1.0:
             suggestions.append(_aws_suggestion(
                 sid=f"bill-low-{svc.replace(' ', '_').lower()[:40]}",
                 category="billing",
@@ -2383,20 +2645,21 @@ def _suggestions_from_billing(billing_data: dict) -> list[dict]:
                 suggestion_type="underused",
                 resource_name=svc,
                 resource_type="Billing",
-                title=f"'{svc}' has very low spend – may be an unused service",
+                title=f"'{svc}' has very low spend — may be an unused service",
                 description=(
                     f"Service '{svc}' shows a cost of ${cost:.2f} in the selected period. "
                     "A very small charge often indicates a lingering resource (e.g. static IP, "
-                    "idle NAT gateway, unused API) that can be safely removed."
+                    "idle NAT Gateway, or an unused API stage) that can safely be removed."
                 ),
                 current_value=f"${cost:.2f}",
                 recommendation=(
-                    f"Investigate active resources under '{svc}'. "
-                    "Delete or disable resources that are no longer in use."
+                    f"Open the '{svc}' console and list all active resources. "
+                    "Delete or disable anything that is no longer in use. "
+                    "Use AWS Resource Explorer to find orphaned resources across regions."
                 ),
             ))
 
-    # Detect cost growth: compare first-half vs second-half of the period
+    # ── Detect rapid cost growth across the period ────────────────────────────
     daily_costs: list[dict] = billing_data.get("daily_costs", [])
     if len(daily_costs) >= 4:
         mid = len(daily_costs) // 2
@@ -2414,13 +2677,15 @@ def _suggestions_from_billing(billing_data: dict) -> list[dict]:
                 title=f"Daily spend growing rapidly (+{growth_pct}% in second half of period)",
                 description=(
                     f"Average daily spend increased by {growth_pct}% in the second half of the "
-                    "selected billing period. This may signal new workloads, misconfiguration, "
+                    "selected billing period. This may signal new workloads, a misconfiguration, "
                     "or runaway auto-scaling."
                 ),
                 current_value=f"avg daily: ${first_avg:.2f} → ${second_avg:.2f}",
                 recommendation=(
-                    "Set up AWS Budget alerts and Cost Anomaly Detection. "
-                    "Inspect recently created or scaled resources using Cost Explorer."
+                    "1. Set up AWS Budgets alerts to notify you when spend exceeds a threshold.\n"
+                    "2. Enable AWS Cost Anomaly Detection to automatically flag unusual spend.\n"
+                    "3. Use Cost Explorer to inspect recently created or scaled resources.\n"
+                    "4. Check for unintentional data-transfer charges (cross-region or internet egress)."
                 ),
             ))
 
@@ -2428,7 +2693,9 @@ def _suggestions_from_billing(billing_data: dict) -> list[dict]:
 
 
 def _suggestions_from_iam(iam_data: dict) -> list[dict]:
-    """Analyse AWS IAM data and return security suggestions."""
+    """Analyse AWS IAM data and return security / hygiene suggestions."""
+    from datetime import datetime, timezone, timedelta  # noqa: PLC0415
+
     suggestions: list[dict] = []
 
     users: list[dict] = iam_data.get("users", [])
@@ -2452,9 +2719,10 @@ def _suggestions_from_iam(iam_data: dict) -> list[dict]:
                 ),
                 current_value="mfa_enabled: false",
                 recommendation=(
-                    "Enable MFA for all IAM users with console access. "
-                    "Use hardware MFA tokens for privileged accounts. "
-                    "Consider requiring MFA via an IAM policy condition."
+                    "1. Enable a virtual or hardware MFA device for this user in the IAM console.\n"
+                    "2. Add an IAM policy condition (aws:MultiFactorAuthPresent: true) to enforce MFA for sensitive operations.\n"
+                    "3. Consider using AWS IAM Identity Center (SSO) with MFA for centralised access management.\n"
+                    "4. Use hardware MFA tokens (e.g. YubiKey) for privileged / admin accounts."
                 ),
             ))
 
@@ -2478,9 +2746,10 @@ def _suggestions_from_iam(iam_data: dict) -> list[dict]:
                 ),
                 current_value=f"policies: {', '.join(admin_policies)}",
                 recommendation=(
-                    "Replace AdministratorAccess with a custom IAM policy or predefined managed "
-                    "policy scoped to the specific services this user needs. Reserve admin access "
-                    "for break-glass emergency accounts protected by MFA."
+                    "1. Replace AdministratorAccess with a custom IAM policy scoped to the specific services this user needs.\n"
+                    "2. Use AWS IAM Access Analyzer to identify which permissions are actually used and remove the rest.\n"
+                    "3. Reserve admin access for break-glass emergency accounts, protected by MFA and tightly audited.\n"
+                    "4. Enable AWS CloudTrail to log all API calls made by this user for audit purposes."
                 ),
             ))
 
@@ -2503,8 +2772,10 @@ def _suggestions_from_iam(iam_data: dict) -> list[dict]:
                 ),
                 current_value=f"policies: {', '.join(admin_policies)}",
                 recommendation=(
-                    "Scope the role to only the permissions it genuinely requires. "
-                    "Use IAM Access Analyzer to identify unused permissions and tighten the policy."
+                    "1. Scope the role to only the permissions it genuinely requires.\n"
+                    "2. Use IAM Access Analyzer to identify unused permissions and tighten the policy.\n"
+                    "3. Add a condition to the trust policy restricting which principals or services can assume the role.\n"
+                    "4. Enable AWS CloudTrail and set alerts for any AssumeRole calls on this role."
                 ),
             ))
 
@@ -2526,8 +2797,81 @@ def _suggestions_from_iam(iam_data: dict) -> list[dict]:
                 ),
                 current_value=f"groups: none, policies: {', '.join(user.get('policies', [])[:3])}",
                 recommendation=(
-                    "Assign users to IAM groups with appropriate policies. "
-                    "Remove directly attached policies and manage permissions at the group level."
+                    "1. Create or assign an appropriate IAM group with the required policies.\n"
+                    "2. Add the user to that group and detach the directly attached policies.\n"
+                    "3. Managing permissions at the group level makes audits and permission changes much easier.\n"
+                    "4. Use AWS IAM Identity Center (SSO) for centralised, scalable permission management."
+                ),
+            ))
+
+    # ── Inactive users: no console login for 90+ days ─────────────────────────
+    _INACTIVE_THRESHOLD_DAYS = 90
+    now = datetime.now(timezone.utc)
+    for user in users:
+        last_used_raw = user.get("password_last_used", "")
+        if not last_used_raw:
+            continue  # No password / programmatic-only user — handled separately below
+        try:
+            last_used = datetime.fromisoformat(str(last_used_raw).replace("Z", "+00:00"))
+            if last_used.tzinfo is None:
+                last_used = last_used.replace(tzinfo=timezone.utc)
+            days_inactive = (now - last_used).days
+        except (ValueError, TypeError):
+            # Try parsing a date-only string (YYYY-MM-DD)
+            try:
+                last_used = datetime.strptime(str(last_used_raw)[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                days_inactive = (now - last_used).days
+            except (ValueError, TypeError):
+                continue
+        if days_inactive >= _INACTIVE_THRESHOLD_DAYS:
+            suggestions.append(_aws_suggestion(
+                sid=f"iam-inactive-user-{user['name'][:40]}",
+                category="iam",
+                severity="warning",
+                suggestion_type="underused",
+                resource_name=user["name"],
+                resource_type="IAM User",
+                title=f"IAM user '{user['name']}' has not logged in for {days_inactive} days",
+                description=(
+                    f"User '{user['name']}' last logged into the AWS console {days_inactive} days ago "
+                    f"(last active: {str(last_used_raw)[:10]}). Long-inactive accounts are a security risk "
+                    "because they represent an unused attack surface with potentially broad permissions."
+                ),
+                current_value=f"password_last_used: {str(last_used_raw)[:10]}, days_inactive: {days_inactive}",
+                recommendation=(
+                    "1. Disable the console login (delete the login profile) for this user if they no longer need AWS console access.\n"
+                    "2. Review any active access keys for this user and rotate or deactivate them.\n"
+                    "3. If the user account is no longer needed, remove it entirely after verifying no services depend on it.\n"
+                    "4. Use AWS IAM credential report (aws iam generate-credential-report) regularly to audit inactive accounts."
+                ),
+            ))
+
+    # ── Programmatic-only users with no recent activity ───────────────────────
+    for user in users:
+        last_used_raw = user.get("password_last_used", "")
+        policies = user.get("policies", [])
+        groups = user.get("groups", [])
+        # A user with policies but no password last used and no groups is likely a service/CI account
+        if not last_used_raw and (policies or groups):
+            suggestions.append(_aws_suggestion(
+                sid=f"iam-no-login-{user['name'][:40]}",
+                category="iam",
+                severity="info",
+                suggestion_type="underused",
+                resource_name=user["name"],
+                resource_type="IAM User",
+                title=f"IAM user '{user['name']}' has never used the AWS console",
+                description=(
+                    f"User '{user['name']}' has never logged into the AWS Management Console. "
+                    "If this is a service or CI/CD account, consider replacing it with an IAM role "
+                    "or using AWS IAM Identity Center for better security and auditability."
+                ),
+                current_value="password_last_used: never",
+                recommendation=(
+                    "1. If this is a machine/service account, replace it with an IAM role assumed via EC2 instance profile, ECS task role, or GitHub OIDC.\n"
+                    "2. Roles are more secure than long-lived access keys because they issue short-term credentials.\n"
+                    "3. If access keys are present, audit when they were last used (aws iam list-access-keys) and rotate or deactivate unused keys.\n"
+                    "4. Consider using AWS Secrets Manager or Parameter Store to securely distribute credentials if keys are required."
                 ),
             ))
 

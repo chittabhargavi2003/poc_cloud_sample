@@ -1460,6 +1460,10 @@ function AwsResourcesView() {
   const [error, setError] = useState(null);
   // null = service cards, 'EC2_PANEL' = EC2 sub-categories, or a specific type string
   const [selectedService, setSelectedService] = useState(null);
+  // Tracks which panel the user navigated from so the back button goes to the right place.
+  // null = came from top-level service cards, 'EC2_PANEL' = came from EC2 sub-categories,
+  // 'VPC_PANEL' = came from VPC sub-categories.
+  const [prevPanel, setPrevPanel] = useState(null);
   const [serviceResources, setServiceResources] = useState([]);
   const [loadingResources, setLoadingResources] = useState(false);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -1484,8 +1488,9 @@ function AwsResourcesView() {
     fetchSummary(selectedRegion);
   }, [fetchSummary, selectedRegion]);
 
-  const resetDrillDown = useCallback((nextService = null) => {
+  const resetDrillDown = useCallback((nextService = null, nextPrevPanel = null) => {
     setSelectedService(nextService);
+    setPrevPanel(nextPrevPanel);
     setServiceResources([]);
     setGlobalFilter('');
     setExpandedRows({});
@@ -1514,14 +1519,18 @@ function AwsResourcesView() {
   const handleServiceClick = useCallback((serviceType) => {
     // EC2 opens the sub-category navigation panel instead of a resource table
     if (serviceType === 'EC2') {
+      setPrevPanel(null);
       setSelectedService('EC2_PANEL');
       return;
     }
     // VPC opens the sub-category navigation panel instead of a resource table
     if (serviceType === 'VPC') {
+      setPrevPanel(null);
       setSelectedService('VPC_PANEL');
       return;
     }
+    // All other top-level service clicks: come from service cards (prevPanel = null)
+    setPrevPanel(null);
     loadResources(serviceType);
   }, [loadResources]);
 
@@ -1529,30 +1538,23 @@ function AwsResourcesView() {
   // 'EC2' → 'EC2_PANEL' redirect so that clicking "Instances" actually shows
   // the instances table.
   const handleEc2ItemClick = useCallback((resourceType) => {
+    setPrevPanel('EC2_PANEL');
     loadResources(resourceType);
   }, [loadResources]);
 
   // Used by VPC panel sub-items — loads resources directly.
   const handleVpcItemClick = useCallback((resourceType) => {
+    setPrevPanel('VPC_PANEL');
     loadResources(resourceType);
   }, [loadResources]);
 
   const handleBack = useCallback(() => {
-    // If viewing an EC2 sub-resource, go back to EC2 panel
-    if (EC2_RESOURCE_TYPES.has(selectedService)) {
-      resetDrillDown('EC2_PANEL');
-      return;
-    }
-    // If viewing a VPC sub-resource (or VPC itself via VPC panel), go back to VPC panel
-    if (VPC_RESOURCE_TYPES.has(selectedService)) {
-      resetDrillDown('VPC_PANEL');
-      return;
-    }
-    resetDrillDown(null);
-  }, [selectedService, resetDrillDown]);
+    // Navigate back to wherever the user came from (EC2_PANEL, VPC_PANEL, or top-level)
+    resetDrillDown(prevPanel, null);
+  }, [prevPanel, resetDrillDown]);
 
   const handleBackToServices = useCallback(() => {
-    resetDrillDown(null);
+    resetDrillDown(null, null);
   }, [resetDrillDown]);
 
   if (loading) {
@@ -1773,8 +1775,6 @@ function AwsResourcesView() {
 
   // --- Drill-down: resources for a specific service ---
   if (selectedService) {
-    const isEc2SubResource = EC2_RESOURCE_TYPES.has(selectedService);
-    const isVpcSubResource = VPC_RESOURCE_TYPES.has(selectedService);
     const tableHeader = (
       <div className="flex justify-content-between align-items-center flex-wrap gap-3"
            style={{ background: '#1e293b', padding: '0.75rem 1rem' }}>
@@ -1800,8 +1800,8 @@ function AwsResourcesView() {
     const isEc2 = selectedService === 'EC2';
     const hasExpansion = isVpc || isEc2;
 
-    // Determine breadcrumb label for back button
-    const backLabel = isEc2SubResource ? 'Back to EC2' : isVpcSubResource ? 'Back to VPC' : 'Back to Services';
+    // Determine breadcrumb label for back button based on where the user came from.
+    const backLabel = prevPanel === 'EC2_PANEL' ? 'Back to EC2' : prevPanel === 'VPC_PANEL' ? 'Back to VPC' : 'Back to Services';
 
     return (
       <div className="flex flex-column gap-4">
