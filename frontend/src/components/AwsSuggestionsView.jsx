@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Tag } from 'primereact/tag';
@@ -83,6 +83,82 @@ function SummaryCard({ icon, label, counts, iconColor }) {
   );
 }
 
+// ─── Cost impact panel (shown in expanded row) ───────────────────────────────
+
+function CostImpactPanel({ data }) {
+  const cost = data.current_cost;
+  const savings = data.estimated_savings;
+  const savingsPct = data.estimated_savings_pct;
+  if (cost == null && savings == null) return null;
+  const afterCost = cost != null && savings != null ? cost - savings : null;
+  return (
+    <div
+      className="flex gap-3 flex-wrap mb-3"
+      style={{ padding: '12px 0 4px 0', borderBottom: '1px solid #334155' }}
+    >
+      {cost != null && (
+        <div style={{
+          background: '#0f172a', border: '1px solid #334155', borderRadius: '8px',
+          padding: '10px 16px', minWidth: '140px',
+        }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Current Spend
+          </div>
+          <div style={{ color: '#f87171', fontSize: '1.25rem', fontWeight: 700 }}>
+            ${cost.toFixed(2)}
+          </div>
+          <div style={{ color: '#64748b', fontSize: '0.7rem' }}>in selected period</div>
+        </div>
+      )}
+      {savings != null && (
+        <div style={{
+          background: '#0f172a', border: '1px solid #22c55e44', borderRadius: '8px',
+          padding: '10px 16px', minWidth: '140px',
+        }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Est. Savings
+          </div>
+          <div style={{ color: '#4ade80', fontSize: '1.25rem', fontWeight: 700 }}>
+            ${savings.toFixed(2)}
+            {savingsPct != null && (
+              <span style={{ fontSize: '0.8rem', color: '#22c55e', marginLeft: '6px' }}>
+                ({savingsPct}%)
+              </span>
+            )}
+          </div>
+          <div style={{ color: '#64748b', fontSize: '0.7rem' }}>by applying suggestions</div>
+        </div>
+      )}
+      {afterCost != null && (
+        <div style={{
+          background: '#0f172a', border: '1px solid #334155', borderRadius: '8px',
+          padding: '10px 16px', minWidth: '140px',
+        }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Cost After
+          </div>
+          <div style={{ color: afterCost <= 0 ? '#4ade80' : '#60a5fa', fontSize: '1.25rem', fontWeight: 700 }}>
+            {afterCost <= 0 ? '$0.00 ✓' : `$${afterCost.toFixed(2)}`}
+          </div>
+          <div style={{ color: '#64748b', fontSize: '0.7rem' }}>estimated new spend</div>
+        </div>
+      )}
+      <div style={{
+        background: '#0f172a', border: '1px solid #334155', borderRadius: '8px',
+        padding: '10px 16px', minWidth: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center',
+      }}>
+        <div style={{ color: '#64748b', fontSize: '0.7rem', marginBottom: '4px' }}>
+          <i className="pi pi-info-circle mr-1" style={{ color: '#f59e0b' }} />
+          Note
+        </div>
+        <div style={{ color: '#94a3b8', fontSize: '0.72rem', lineHeight: 1.4 }}>
+          Savings estimates are conservative industry benchmarks. Actual savings depend on usage patterns.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Expandable row detail ────────────────────────────────────────────────────
 
 function RowDetail({ data }) {
@@ -96,6 +172,7 @@ function RowDetail({ data }) {
         margin: '4px 0',
       }}
     >
+      <CostImpactPanel data={data} />
       <div className="grid" style={{ gap: '16px' }}>
         <div style={{ flex: '1 1 300px' }}>
           <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginBottom: '4px' }}>
@@ -119,7 +196,7 @@ function RowDetail({ data }) {
           <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginBottom: '4px' }}>
             RECOMMENDATION
           </div>
-          <div style={{ color: '#e2e8f0', fontSize: '0.85rem', lineHeight: 1.6 }}>
+          <div style={{ color: '#e2e8f0', fontSize: '0.85rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
             {data.recommendation}
           </div>
         </div>
@@ -170,10 +247,23 @@ export default function AwsSuggestionsView() {
   }, [load]);
 
   // Apply filters
-  const suggestions = (data?.suggestions || [])
-    .filter((s) => categoryFilter === 'all' || s.category === categoryFilter)
-    .filter((s) => severityFilter === 'all' || s.severity === severityFilter)
-    .sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 2) - (SEVERITY_ORDER[b.severity] ?? 2));
+  const suggestions = useMemo(
+    () =>
+      (data?.suggestions || [])
+        .filter((s) => categoryFilter === 'all' || s.category === categoryFilter)
+        .filter((s) => severityFilter === 'all' || s.severity === severityFilter)
+        .sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 2) - (SEVERITY_ORDER[b.severity] ?? 2)),
+    [data, categoryFilter, severityFilter]
+  );
+
+  // Total estimated savings across all billing suggestions (not filtered, so always visible)
+  const totalEstimatedSavings = useMemo(
+    () =>
+      (data?.suggestions || [])
+        .filter((s) => s.estimated_savings != null)
+        .reduce((acc, s) => acc + s.estimated_savings, 0),
+    [data]
+  );
 
   const summary = data?.summary || {
     resources: { total: 0, critical: 0, warning: 0, info: 0 },
@@ -255,6 +345,7 @@ export default function AwsSuggestionsView() {
               counts={summary.iam}
               iconColor="#a78bfa"
             />
+            {/* Total suggestions card */}
             <div
               style={{
                 background: '#1e293b',
@@ -276,6 +367,32 @@ export default function AwsSuggestionsView() {
                 suggestions
               </div>
             </div>
+            {/* Total estimated savings card (only when billing suggestions exist) */}
+            {totalEstimatedSavings > 0 && (
+              <div
+                style={{
+                  background: '#0d2418',
+                  border: '1px solid #22c55e44',
+                  borderRadius: '10px',
+                  padding: '16px 20px',
+                  flex: '1 1 180px',
+                  minWidth: '180px',
+                }}
+              >
+                <div className="flex align-items-center gap-2 mb-2">
+                  <i className="pi pi-arrow-down-right text-xl" style={{ color: '#4ade80' }} />
+                  <span style={{ color: '#86efac', fontWeight: 600, fontSize: '0.85rem' }}>
+                    Est. Savings
+                  </span>
+                </div>
+                <div style={{ color: '#4ade80', fontSize: '1.5rem', fontWeight: 700 }}>
+                  ${totalEstimatedSavings.toFixed(2)}
+                </div>
+                <div style={{ color: '#4ade8088', fontSize: '0.75rem', marginTop: '4px' }}>
+                  if all suggestions applied
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Filters */}
@@ -363,6 +480,43 @@ export default function AwsSuggestionsView() {
               />
               <Column field="resource_type" header="Service"  style={{ width: '130px' }} sortable />
               <Column field="resource_name" header="Resource" sortable />
+              <Column
+                header="Cost Impact"
+                style={{ width: '200px' }}
+                body={(row) => {
+                  const cost = row.current_cost;
+                  const savings = row.estimated_savings;
+                  const savingsPct = row.estimated_savings_pct;
+                  if (cost == null && savings == null) {
+                    return <span style={{ color: '#475569', fontSize: '0.75rem' }}>—</span>;
+                  }
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {cost != null && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ color: '#94a3b8', fontSize: '0.7rem', minWidth: '44px' }}>Spend:</span>
+                          <span style={{ color: '#f87171', fontSize: '0.8rem', fontWeight: 600 }}>
+                            ${cost.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                      {savings != null && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ color: '#94a3b8', fontSize: '0.7rem', minWidth: '44px' }}>Save:</span>
+                          <span style={{ color: '#4ade80', fontSize: '0.8rem', fontWeight: 600 }}>
+                            ${savings.toFixed(2)}
+                            {savingsPct != null && (
+                              <span style={{ color: '#22c55e', fontSize: '0.68rem', marginLeft: '4px' }}>
+                                ({savingsPct}%)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }}
+              />
               <Column
                 field="title"
                 header="Finding"
