@@ -125,6 +125,10 @@ function SearchableTableHeader({ title, icon, iconColor, count, globalFilter, on
   );
 }
 
+function Dash() {
+  return <span style={{ color: '#475569' }}>—</span>;
+}
+
 function EmptyState({ icon, message }) {
   return (
     <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
@@ -405,7 +409,7 @@ export default function AwsIamView() {
                 body={(row) => (
                   <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
                     {row.password_last_used
-                      ? String(row.password_last_used).split('T')[0]
+                      ? <span>{String(row.password_last_used).split('T')[0]}</span>
                       : <span style={{ color: '#475569' }}>Never</span>}
                   </span>
                 )}
@@ -474,7 +478,7 @@ export default function AwsIamView() {
                 style={{ minWidth: '200px' }}
                 body={(row) => (
                   <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
-                    {row.description || <span style={{ color: '#475569' }}>—</span>}
+                    {row.description || <Dash />}
                   </span>
                 )}
               />
@@ -680,7 +684,7 @@ export default function AwsIamView() {
                 style={{ minWidth: '220px' }}
                 body={(row) => (
                   <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
-                    {row.description || <span style={{ color: '#475569' }}>—</span>}
+                    {row.description || <Dash />}
                   </span>
                 )}
               />
