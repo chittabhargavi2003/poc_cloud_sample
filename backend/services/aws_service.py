@@ -2144,6 +2144,39 @@ def _match_service_cost_tip(svc_name: str) -> tuple[str, str] | None:
     return None
 
 
+# Estimated maximum cost-savings percentage achievable for each AWS service
+# when all recommended optimisations are applied.  These are conservative
+# industry estimates used only to give users an order-of-magnitude guide.
+_SAVINGS_POTENTIAL_PCT: list[tuple[tuple[str, ...], float]] = [
+    (("ec2", "elastic compute cloud"), 50.0),   # RI/Spot + right-size
+    (("s3", "simple storage service"), 40.0),   # lifecycle + tiering
+    (("rds", "relational database"),   40.0),   # RI + right-size
+    (("lambda",),                      25.0),   # memory tuning + arm64
+    (("eks", "elastic kubernetes"),    45.0),   # spot + karpenter
+    (("ecs", "elastic container"),     40.0),   # Fargate spot
+    (("elasticache",),                 30.0),   # reserved nodes
+    (("dynamodb",),                    35.0),   # on-demand/TTL
+    (("cloudwatch",),                  50.0),   # log retention
+    (("elb", "load balancing", "elastic load"), 30.0),
+    (("msk", "managed streaming"),     40.0),   # tiered storage
+    (("opensearch",),                  60.0),   # UltraWarm/Cold
+    (("glue",),                        34.0),   # Flex class
+    (("athena",),                      80.0),   # columnar format
+    (("efs", "elastic file system"),   50.0),   # lifecycle + cleanup
+    (("vpc", "virtual private cloud", "nat gateway"), 30.0),
+    (("api gateway",),                 71.0),   # HTTP API migration
+]
+
+
+def _estimate_savings_pct(svc_name: str) -> float | None:
+    """Return the estimated maximum savings percentage for a service, or None."""
+    low = svc_name.lower()
+    for keywords, pct in _SAVINGS_POTENTIAL_PCT:
+        if any(kw in low for kw in keywords):
+            return pct
+    return None
+
+
 def _aws_suggestion(
     sid: str,
     category: str,
@@ -2155,8 +2188,11 @@ def _aws_suggestion(
     description: str,
     current_value: str,
     recommendation: str,
+    current_cost: float | None = None,
+    estimated_savings: float | None = None,
+    estimated_savings_pct: float | None = None,
 ) -> dict:
-    return {
+    result: dict = {
         "id": sid,
         "category": category,
         "severity": severity,
@@ -2168,6 +2204,13 @@ def _aws_suggestion(
         "current_value": current_value,
         "recommendation": recommendation,
     }
+    if current_cost is not None:
+        result["current_cost"] = round(current_cost, 2)
+    if estimated_savings is not None:
+        result["estimated_savings"] = round(estimated_savings, 2)
+    if estimated_savings_pct is not None:
+        result["estimated_savings_pct"] = round(estimated_savings_pct, 1)
+    return result
 
 
 def _suggestions_from_resources(resources: list[dict]) -> list[dict]:
@@ -2616,6 +2659,8 @@ def _suggestions_from_billing(billing_data: dict) -> list[dict]:
                 else "info"
             )
             tip = _match_service_cost_tip(svc)
+            savings_pct = _estimate_savings_pct(svc)
+            est_savings = round(cost * savings_pct / 100, 2) if savings_pct is not None else None
             if tip:
                 action_title, recommendation = tip
                 title = f"'{svc}' is a top cost driver ({pct}% of spend) — {action_title}"
@@ -2646,6 +2691,9 @@ def _suggestions_from_billing(billing_data: dict) -> list[dict]:
                 description=description,
                 current_value=f"${cost:.2f} / ${total:.2f} total ({pct}%)",
                 recommendation=recommendation,
+                current_cost=cost,
+                estimated_savings=est_savings,
+                estimated_savings_pct=savings_pct,
             ))
 
         # ── Near-zero spend: possibly a forgotten / lingering resource ────────
@@ -2669,6 +2717,9 @@ def _suggestions_from_billing(billing_data: dict) -> list[dict]:
                     "Delete or disable anything that is no longer in use. "
                     "Use AWS Resource Explorer to find orphaned resources across regions."
                 ),
+                current_cost=cost,
+                estimated_savings=cost,
+                estimated_savings_pct=100.0,
             ))
 
     # ── Detect rapid cost growth across the period ────────────────────────────

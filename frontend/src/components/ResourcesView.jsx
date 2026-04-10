@@ -1464,6 +1464,8 @@ function AwsResourcesView() {
   // null = came from top-level service cards, 'EC2_PANEL' = came from EC2 sub-categories,
   // 'VPC_PANEL' = came from VPC sub-categories.
   const [prevPanel, setPrevPanel] = useState(null);
+  // Active sidebar category index within EC2/VPC panel (null = "All")
+  const [activePanelCategory, setActivePanelCategory] = useState(null);
   const [serviceResources, setServiceResources] = useState([]);
   const [loadingResources, setLoadingResources] = useState(false);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -1491,6 +1493,7 @@ function AwsResourcesView() {
   const resetDrillDown = useCallback((nextService = null, nextPrevPanel = null) => {
     setSelectedService(nextService);
     setPrevPanel(nextPrevPanel);
+    setActivePanelCategory(null);
     setServiceResources([]);
     setGlobalFilter('');
     setExpandedRows({});
@@ -1520,12 +1523,14 @@ function AwsResourcesView() {
     // EC2 opens the sub-category navigation panel instead of a resource table
     if (serviceType === 'EC2') {
       setPrevPanel(null);
+      setActivePanelCategory(null);
       setSelectedService('EC2_PANEL');
       return;
     }
     // VPC opens the sub-category navigation panel instead of a resource table
     if (serviceType === 'VPC') {
       setPrevPanel(null);
+      setActivePanelCategory(null);
       setSelectedService('VPC_PANEL');
       return;
     }
@@ -1573,201 +1578,349 @@ function AwsResourcesView() {
     </>
   );
 
-  // --- EC2 sub-category panel ---
+  // --- EC2 sub-category panel (sidebar + content layout) ---
   if (selectedService === 'EC2_PANEL') {
+    const visibleCategories = activePanelCategory === null
+      ? EC2_CATEGORIES
+      : EC2_CATEGORIES.filter((_, i) => i === activePanelCategory);
     return (
-      <div className="flex flex-column gap-4">
+      <div className="flex flex-column gap-3">
         <Toast ref={toast} />
-        <div className="flex align-items-center gap-2">
-          <Button
-            icon="pi pi-arrow-left"
-            label="Back to Services"
-            className="p-button-text"
-            onClick={handleBackToServices}
-            style={{ color: '#a5b4fc' }}
-          />
-          <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-            <i className="pi pi-server mr-1" style={{ color: '#667eea' }} />
-            EC2 Dashboard
-          </span>
+
+        {/* Header */}
+        <div className="flex align-items-center justify-content-between flex-wrap gap-2">
+          <div className="flex align-items-center gap-2">
+            <Button
+              icon="pi pi-arrow-left"
+              label="Back to Services"
+              className="p-button-text p-button-sm"
+              onClick={handleBackToServices}
+              style={{ color: '#a5b4fc' }}
+            />
+            <span style={{ color: '#475569' }}>›</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{
+                width: '24px', height: '24px', borderRadius: '6px',
+                background: '#667eea22',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <i className="pi pi-server" style={{ color: '#667eea', fontSize: '0.8rem' }} />
+              </div>
+              <span style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.95rem' }}>EC2 Dashboard</span>
+            </div>
+          </div>
+          <div className="flex align-items-center gap-2">
+            <i className="pi pi-map-marker" style={{ color: '#94a3b8', fontSize: '0.85rem' }} />
+            <Dropdown
+              value={selectedRegion}
+              options={AWS_REGIONS}
+              onChange={(e) => setSelectedRegion(e.value)}
+              placeholder="Select a region…"
+              filter
+              filterPlaceholder="Search regions…"
+              style={{ minWidth: '240px' }}
+            />
+          </div>
         </div>
 
-        {/* Region selector */}
-        <div className="flex align-items-center gap-2">
-          <i className="pi pi-map-marker" style={{ color: '#94a3b8' }} />
-          <Dropdown
-            value={selectedRegion}
-            options={AWS_REGIONS}
-            onChange={(e) => setSelectedRegion(e.value)}
-            placeholder="Select a region…"
-            filter
-            filterPlaceholder="Search regions…"
-            style={{ minWidth: '260px' }}
-          />
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem' }}>
-          {EC2_CATEGORIES.map((category) => (
-            <div key={category.name} style={{
-              background: '#1e293b',
-              border: `1px solid ${category.color}44`,
-              borderRadius: '14px',
-              padding: '1.25rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem',
-            }}>
-              {/* Category header */}
-              <div className="flex align-items-center gap-2">
-                <div style={{
-                  width: '32px', height: '32px', borderRadius: '8px',
-                  background: `${category.color}22`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                }}>
-                  <i className={`pi ${category.icon}`} style={{ color: category.color, fontSize: '1rem' }} />
+        {/* Sidebar + Content */}
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+          {/* Left sidebar — category list */}
+          <div style={{
+            width: '210px',
+            flexShrink: 0,
+            background: '#1e293b',
+            borderRadius: '12px',
+            border: '1px solid #334155',
+            overflow: 'hidden',
+          }}>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Categories
+            </div>
+            {/* All option */}
+            <div
+              onClick={() => setActivePanelCategory(null)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 14px',
+                cursor: 'pointer',
+                background: activePanelCategory === null ? '#667eea22' : 'transparent',
+                borderLeft: activePanelCategory === null ? '3px solid #667eea' : '3px solid transparent',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={(e) => { if (activePanelCategory !== null) e.currentTarget.style.background = '#ffffff08'; }}
+              onMouseLeave={(e) => { if (activePanelCategory !== null) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <span style={{ color: activePanelCategory === null ? '#a5b4fc' : '#cbd5e1', fontSize: '0.85rem', fontWeight: activePanelCategory === null ? 600 : 400 }}>All</span>
+              <span style={{ background: '#667eea22', color: '#818cf8', borderRadius: '10px', padding: '1px 7px', fontSize: '0.7rem', fontWeight: 600 }}>
+                {EC2_CATEGORIES.reduce((a, c) => a + c.items.length, 0)}
+              </span>
+            </div>
+            {EC2_CATEGORIES.map((cat, idx) => (
+              <div
+                key={cat.name}
+                onClick={() => setActivePanelCategory(idx)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  background: activePanelCategory === idx ? `${cat.color}18` : 'transparent',
+                  borderLeft: activePanelCategory === idx ? `3px solid ${cat.color}` : '3px solid transparent',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { if (activePanelCategory !== idx) e.currentTarget.style.background = '#ffffff08'; }}
+                onMouseLeave={(e) => { if (activePanelCategory !== idx) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <i className={`pi ${cat.icon}`} style={{ color: activePanelCategory === idx ? cat.color : '#64748b', fontSize: '0.8rem' }} />
+                  <span style={{ color: activePanelCategory === idx ? '#f1f5f9' : '#94a3b8', fontSize: '0.82rem', fontWeight: activePanelCategory === idx ? 600 : 400 }}>
+                    {cat.name}
+                  </span>
                 </div>
-                <span className="font-semibold" style={{ color: '#f1f5f9', fontSize: '0.95rem' }}>
-                  {category.name}
+                <span style={{ background: `${cat.color}22`, color: cat.color, borderRadius: '10px', padding: '1px 6px', fontSize: '0.68rem', fontWeight: 600 }}>
+                  {cat.items.length}
                 </span>
               </div>
-              {/* Sub-items */}
-              <div className="flex flex-column gap-1">
-                {category.items.map((item) => (
-                  <div
-                    key={item.resourceType}
-                    onClick={() => handleEc2ItemClick(item.resourceType)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '0.5rem 0.75rem',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      background: '#0f172a',
-                      border: '1px solid #1e293b',
-                      transition: 'border-color 0.15s, background 0.15s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = category.color;
-                      e.currentTarget.style.background = `${category.color}11`;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#1e293b';
-                      e.currentTarget.style.background = '#0f172a';
-                    }}
-                  >
-                    <div>
-                      <div className="font-medium" style={{ color: '#e2e8f0', fontSize: '0.875rem' }}>
-                        {item.label}
-                      </div>
-                      <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '1px' }}>
-                        {item.description}
-                      </div>
-                    </div>
-                    <i className="pi pi-chevron-right" style={{ color: '#475569', fontSize: '0.75rem' }} />
+            ))}
+          </div>
+
+          {/* Right content area — resource items */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {visibleCategories.map((category) => (
+              <div key={category.name} style={{ marginBottom: '1.25rem' }}>
+                {/* Category header */}
+                <div className="flex align-items-center gap-2" style={{ marginBottom: '0.75rem' }}>
+                  <div style={{
+                    width: '28px', height: '28px', borderRadius: '7px',
+                    background: `${category.color}22`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>
+                    <i className={`pi ${category.icon}`} style={{ color: category.color, fontSize: '0.9rem' }} />
                   </div>
-                ))}
+                  <span style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.9rem' }}>{category.name}</span>
+                  <span style={{
+                    background: `${category.color}22`, color: category.color,
+                    borderRadius: '12px', padding: '1px 8px',
+                    fontSize: '0.72rem', fontWeight: 600,
+                  }}>
+                    {category.items.length}
+                  </span>
+                </div>
+                {/* Items grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.6rem' }}>
+                  {category.items.map((item) => (
+                    <div
+                      key={item.resourceType}
+                      onClick={() => handleEc2ItemClick(item.resourceType)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '0.65rem 0.9rem',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        background: '#1e293b',
+                        border: `1px solid #334155`,
+                        transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = category.color;
+                        e.currentTarget.style.background = `${category.color}11`;
+                        e.currentTarget.style.boxShadow = `0 2px 12px ${category.color}22`;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = '#334155';
+                        e.currentTarget.style.background = '#1e293b';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#e2e8f0', fontSize: '0.875rem', fontWeight: 500, marginBottom: '2px' }}>
+                          {item.label}
+                        </div>
+                        <div style={{ color: '#64748b', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {item.description}
+                        </div>
+                      </div>
+                      <i className="pi pi-chevron-right" style={{ color: `${category.color}88`, fontSize: '0.75rem', flexShrink: 0, marginLeft: '6px' }} />
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     );
   }
 
-  // --- VPC sub-category panel ---
+  // --- VPC sub-category panel (sidebar + content layout) ---
   if (selectedService === 'VPC_PANEL') {
+    const visibleVpcCategories = activePanelCategory === null
+      ? VPC_CATEGORIES
+      : VPC_CATEGORIES.filter((_, i) => i === activePanelCategory);
     return (
-      <div className="flex flex-column gap-4">
+      <div className="flex flex-column gap-3">
         <Toast ref={toast} />
-        <div className="flex align-items-center gap-2">
-          <Button
-            icon="pi pi-arrow-left"
-            label="Back to Services"
-            className="p-button-text"
-            onClick={handleBackToServices}
-            style={{ color: '#a5b4fc' }}
-          />
-          <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-            <i className="pi pi-sitemap mr-1" style={{ color: '#667eea' }} />
-            VPC Dashboard
-          </span>
+
+        {/* Header */}
+        <div className="flex align-items-center justify-content-between flex-wrap gap-2">
+          <div className="flex align-items-center gap-2">
+            <Button
+              icon="pi pi-arrow-left"
+              label="Back to Services"
+              className="p-button-text p-button-sm"
+              onClick={handleBackToServices}
+              style={{ color: '#a5b4fc' }}
+            />
+            <span style={{ color: '#475569' }}>›</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{
+                width: '24px', height: '24px', borderRadius: '6px',
+                background: '#667eea22',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <i className="pi pi-sitemap" style={{ color: '#667eea', fontSize: '0.8rem' }} />
+              </div>
+              <span style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.95rem' }}>VPC Dashboard</span>
+            </div>
+          </div>
+          <div className="flex align-items-center gap-2">
+            <i className="pi pi-map-marker" style={{ color: '#94a3b8', fontSize: '0.85rem' }} />
+            <Dropdown
+              value={selectedRegion}
+              options={AWS_REGIONS}
+              onChange={(e) => setSelectedRegion(e.value)}
+              placeholder="Select a region…"
+              filter
+              filterPlaceholder="Search regions…"
+              style={{ minWidth: '240px' }}
+            />
+          </div>
         </div>
 
-        {/* Region selector */}
-        <div className="flex align-items-center gap-2">
-          <i className="pi pi-map-marker" style={{ color: '#94a3b8' }} />
-          <Dropdown
-            value={selectedRegion}
-            options={AWS_REGIONS}
-            onChange={(e) => setSelectedRegion(e.value)}
-            placeholder="Select a region…"
-            filter
-            filterPlaceholder="Search regions…"
-            style={{ minWidth: '260px' }}
-          />
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem' }}>
-          {VPC_CATEGORIES.map((category) => (
-            <div key={category.name} style={{
-              background: '#1e293b',
-              border: `1px solid ${category.color}44`,
-              borderRadius: '14px',
-              padding: '1.25rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem',
-            }}>
-              {/* Category header */}
-              <div className="flex align-items-center gap-2">
-                <div style={{
-                  width: '32px', height: '32px', borderRadius: '8px',
-                  background: `${category.color}22`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                }}>
-                  <i className={`pi ${category.icon}`} style={{ color: category.color, fontSize: '1rem' }} />
+        {/* Sidebar + Content */}
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+          {/* Left sidebar — category list */}
+          <div style={{
+            width: '210px',
+            flexShrink: 0,
+            background: '#1e293b',
+            borderRadius: '12px',
+            border: '1px solid #334155',
+            overflow: 'hidden',
+          }}>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Categories
+            </div>
+            {/* All option */}
+            <div
+              onClick={() => setActivePanelCategory(null)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 14px',
+                cursor: 'pointer',
+                background: activePanelCategory === null ? '#667eea22' : 'transparent',
+                borderLeft: activePanelCategory === null ? '3px solid #667eea' : '3px solid transparent',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={(e) => { if (activePanelCategory !== null) e.currentTarget.style.background = '#ffffff08'; }}
+              onMouseLeave={(e) => { if (activePanelCategory !== null) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <span style={{ color: activePanelCategory === null ? '#a5b4fc' : '#cbd5e1', fontSize: '0.85rem', fontWeight: activePanelCategory === null ? 600 : 400 }}>All</span>
+              <span style={{ background: '#667eea22', color: '#818cf8', borderRadius: '10px', padding: '1px 7px', fontSize: '0.7rem', fontWeight: 600 }}>
+                {VPC_CATEGORIES.reduce((a, c) => a + c.items.length, 0)}
+              </span>
+            </div>
+            {VPC_CATEGORIES.map((cat, idx) => (
+              <div
+                key={cat.name}
+                onClick={() => setActivePanelCategory(idx)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  background: activePanelCategory === idx ? `${cat.color}18` : 'transparent',
+                  borderLeft: activePanelCategory === idx ? `3px solid ${cat.color}` : '3px solid transparent',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { if (activePanelCategory !== idx) e.currentTarget.style.background = '#ffffff08'; }}
+                onMouseLeave={(e) => { if (activePanelCategory !== idx) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <i className={`pi ${cat.icon}`} style={{ color: activePanelCategory === idx ? cat.color : '#64748b', fontSize: '0.8rem' }} />
+                  <span style={{ color: activePanelCategory === idx ? '#f1f5f9' : '#94a3b8', fontSize: '0.82rem', fontWeight: activePanelCategory === idx ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>
+                    {cat.name}
+                  </span>
                 </div>
-                <span className="font-semibold" style={{ color: '#f1f5f9', fontSize: '0.95rem' }}>
-                  {category.name}
+                <span style={{ background: `${cat.color}22`, color: cat.color, borderRadius: '10px', padding: '1px 6px', fontSize: '0.68rem', fontWeight: 600, flexShrink: 0 }}>
+                  {cat.items.length}
                 </span>
               </div>
-              {/* Sub-items */}
-              <div className="flex flex-column gap-1">
-                {category.items.map((item) => (
-                  <div
-                    key={item.resourceType}
-                    onClick={() => handleVpcItemClick(item.resourceType)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '0.5rem 0.75rem',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      background: '#0f172a',
-                      border: '1px solid #1e293b',
-                      transition: 'border-color 0.15s, background 0.15s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = category.color;
-                      e.currentTarget.style.background = `${category.color}11`;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#1e293b';
-                      e.currentTarget.style.background = '#0f172a';
-                    }}
-                  >
-                    <div>
-                      <div className="font-medium" style={{ color: '#e2e8f0', fontSize: '0.875rem' }}>
-                        {item.label}
-                      </div>
-                      <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '1px' }}>
-                        {item.description}
-                      </div>
-                    </div>
-                    <i className="pi pi-chevron-right" style={{ color: '#475569', fontSize: '0.75rem' }} />
+            ))}
+          </div>
+
+          {/* Right content area — resource items */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {visibleVpcCategories.map((category) => (
+              <div key={category.name} style={{ marginBottom: '1.25rem' }}>
+                {/* Category header */}
+                <div className="flex align-items-center gap-2" style={{ marginBottom: '0.75rem' }}>
+                  <div style={{
+                    width: '28px', height: '28px', borderRadius: '7px',
+                    background: `${category.color}22`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>
+                    <i className={`pi ${category.icon}`} style={{ color: category.color, fontSize: '0.9rem' }} />
                   </div>
-                ))}
+                  <span style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.9rem' }}>{category.name}</span>
+                  <span style={{
+                    background: `${category.color}22`, color: category.color,
+                    borderRadius: '12px', padding: '1px 8px',
+                    fontSize: '0.72rem', fontWeight: 600,
+                  }}>
+                    {category.items.length}
+                  </span>
+                </div>
+                {/* Items grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.6rem' }}>
+                  {category.items.map((item) => (
+                    <div
+                      key={item.resourceType}
+                      onClick={() => handleVpcItemClick(item.resourceType)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '0.65rem 0.9rem',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        background: '#1e293b',
+                        border: `1px solid #334155`,
+                        transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = category.color;
+                        e.currentTarget.style.background = `${category.color}11`;
+                        e.currentTarget.style.boxShadow = `0 2px 12px ${category.color}22`;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = '#334155';
+                        e.currentTarget.style.background = '#1e293b';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#e2e8f0', fontSize: '0.875rem', fontWeight: 500, marginBottom: '2px' }}>
+                          {item.label}
+                        </div>
+                        <div style={{ color: '#64748b', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {item.description}
+                        </div>
+                      </div>
+                      <i className="pi pi-chevron-right" style={{ color: `${category.color}88`, fontSize: '0.75rem', flexShrink: 0, marginLeft: '6px' }} />
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     );
