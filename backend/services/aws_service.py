@@ -2393,12 +2393,20 @@ def _suggestions_from_resources(resources: list[dict]) -> list[dict]:
                 ))
 
             # Unused: bucket with no stored data
-            is_empty = (
-                not storage_size
-                or storage_size == "0.00 MB"
-                or storage_size == "0 MB"
-                or storage_size.startswith("0.00")
-            )
+            def _is_effectively_zero(size: str) -> bool:
+                """Return True if a size string represents zero or near-zero storage."""
+                if not size:
+                    return True
+                # Parse the leading numeric part and compare to a small threshold.
+                import re as _re  # noqa: PLC0415
+                m = _re.match(r"([\d.]+)", size.strip())
+                if m:
+                    try:
+                        return float(m.group(1)) < 0.01
+                    except ValueError:
+                        pass
+                return False
+            is_empty = _is_effectively_zero(storage_size)
             if is_empty:
                 suggestions.append(_aws_suggestion(
                     sid=f"res-s3-empty-{name}",
@@ -2598,14 +2606,11 @@ def _suggestions_from_resources(resources: list[dict]) -> list[dict]:
         # ── EFS File Systems ───────────────────────────────────────────────────
         elif rtype == "EFS":
             size_str = (r.get("size") or "").strip()
-            # EFS filesystem with no data stored (empty or unknown size)
-            is_empty = (
-                not size_str
-                or size_str == "0.0 GB"
-                or size_str == "0 GB"
-                or size_str.startswith("0.00")
-            )
-            if is_empty:
+            # EFS filesystem with no data stored (empty or near-zero size)
+            import re as _re2  # noqa: PLC0415
+            _m = _re2.match(r"([\d.]+)", size_str)
+            efs_is_empty = not size_str or (bool(_m) and float(_m.group(1)) < 0.01)
+            if efs_is_empty:
                 suggestions.append(_aws_suggestion(
                     sid=f"res-efs-empty-{name}",
                     category="resources",
@@ -2873,19 +2878,27 @@ def _suggestions_from_iam(iam_data: dict) -> list[dict]:
         last_used_raw = user.get("password_last_used", "")
         if not last_used_raw:
             continue  # No password / programmatic-only user — handled separately below
+        last_used_str = str(last_used_raw)
         try:
-            last_used = datetime.fromisoformat(str(last_used_raw).replace("Z", "+00:00"))
+            # Replace trailing 'Z' only (not any 'Z' within timezone offsets).
+            if last_used_str.endswith("Z"):
+                last_used_str = last_used_str[:-1] + "+00:00"
+            last_used = datetime.fromisoformat(last_used_str)
             if last_used.tzinfo is None:
                 last_used = last_used.replace(tzinfo=timezone.utc)
             days_inactive = (now - last_used).days
         except (ValueError, TypeError):
             # Try parsing a date-only string (YYYY-MM-DD)
+            date_part = last_used_str[:10]
+            if len(date_part) < 10:
+                continue
             try:
-                last_used = datetime.strptime(str(last_used_raw)[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                last_used = datetime.strptime(date_part, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 days_inactive = (now - last_used).days
             except (ValueError, TypeError):
                 continue
         if days_inactive >= _IAM_INACTIVE_THRESHOLD_DAYS:
+            last_used_display = last_used_str[:10] if len(last_used_str) >= 10 else last_used_str
             suggestions.append(_aws_suggestion(
                 sid=f"iam-inactive-user-{user['name'][:40]}",
                 category="iam",
@@ -2896,10 +2909,10 @@ def _suggestions_from_iam(iam_data: dict) -> list[dict]:
                 title=f"IAM user '{user['name']}' has not logged in for {days_inactive} days",
                 description=(
                     f"User '{user['name']}' last logged into the AWS console {days_inactive} days ago "
-                    f"(last active: {str(last_used_raw)[:10]}). Long-inactive accounts are a security risk "
+                    f"(last active: {last_used_display}). Long-inactive accounts are a security risk "
                     "because they represent an unused attack surface with potentially broad permissions."
                 ),
-                current_value=f"password_last_used: {str(last_used_raw)[:10]}, days_inactive: {days_inactive}",
+                current_value=f"password_last_used: {last_used_display}, days_inactive: {days_inactive}",
                 recommendation=(
                     "1. Disable the console login (delete the login profile) for this user if they no longer need AWS console access.\n"
                     "2. Review any active access keys for this user and rotate or deactivate them.\n"

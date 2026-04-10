@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Tag } from 'primereact/tag';
@@ -129,7 +129,7 @@ function CostImpactPanel({ data }) {
           <div style={{ color: '#64748b', fontSize: '0.7rem' }}>by applying suggestions</div>
         </div>
       )}
-      {afterCost != null && afterCost > 0 && (
+      {afterCost != null && (
         <div style={{
           background: '#0f172a', border: '1px solid #334155', borderRadius: '8px',
           padding: '10px 16px', minWidth: '140px',
@@ -137,8 +137,8 @@ function CostImpactPanel({ data }) {
           <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Cost After
           </div>
-          <div style={{ color: '#60a5fa', fontSize: '1.25rem', fontWeight: 700 }}>
-            ${afterCost.toFixed(2)}
+          <div style={{ color: afterCost <= 0 ? '#4ade80' : '#60a5fa', fontSize: '1.25rem', fontWeight: 700 }}>
+            {afterCost <= 0 ? '$0.00 ✓' : `$${afterCost.toFixed(2)}`}
           </div>
           <div style={{ color: '#64748b', fontSize: '0.7rem' }}>estimated new spend</div>
         </div>
@@ -247,10 +247,23 @@ export default function AwsSuggestionsView() {
   }, [load]);
 
   // Apply filters
-  const suggestions = (data?.suggestions || [])
-    .filter((s) => categoryFilter === 'all' || s.category === categoryFilter)
-    .filter((s) => severityFilter === 'all' || s.severity === severityFilter)
-    .sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 2) - (SEVERITY_ORDER[b.severity] ?? 2));
+  const suggestions = useMemo(
+    () =>
+      (data?.suggestions || [])
+        .filter((s) => categoryFilter === 'all' || s.category === categoryFilter)
+        .filter((s) => severityFilter === 'all' || s.severity === severityFilter)
+        .sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 2) - (SEVERITY_ORDER[b.severity] ?? 2)),
+    [data, categoryFilter, severityFilter]
+  );
+
+  // Total estimated savings across all billing suggestions (not filtered, so always visible)
+  const totalEstimatedSavings = useMemo(
+    () =>
+      (data?.suggestions || [])
+        .filter((s) => s.estimated_savings != null)
+        .reduce((acc, s) => acc + s.estimated_savings, 0),
+    [data]
+  );
 
   const summary = data?.summary || {
     resources: { total: 0, critical: 0, warning: 0, info: 0 },
@@ -355,37 +368,31 @@ export default function AwsSuggestionsView() {
               </div>
             </div>
             {/* Total estimated savings card (only when billing suggestions exist) */}
-            {(() => {
-              const totalSavings = (data.suggestions || [])
-                .filter((s) => s.estimated_savings != null)
-                .reduce((acc, s) => acc + s.estimated_savings, 0);
-              if (totalSavings <= 0) return null;
-              return (
-                <div
-                  style={{
-                    background: '#0d2418',
-                    border: '1px solid #22c55e44',
-                    borderRadius: '10px',
-                    padding: '16px 20px',
-                    flex: '1 1 180px',
-                    minWidth: '180px',
-                  }}
-                >
-                  <div className="flex align-items-center gap-2 mb-2">
-                    <i className="pi pi-arrow-down-right text-xl" style={{ color: '#4ade80' }} />
-                    <span style={{ color: '#86efac', fontWeight: 600, fontSize: '0.85rem' }}>
-                      Est. Savings
-                    </span>
-                  </div>
-                  <div style={{ color: '#4ade80', fontSize: '1.5rem', fontWeight: 700 }}>
-                    ${totalSavings.toFixed(2)}
-                  </div>
-                  <div style={{ color: '#4ade8088', fontSize: '0.75rem', marginTop: '4px' }}>
-                    if all suggestions applied
-                  </div>
+            {totalEstimatedSavings > 0 && (
+              <div
+                style={{
+                  background: '#0d2418',
+                  border: '1px solid #22c55e44',
+                  borderRadius: '10px',
+                  padding: '16px 20px',
+                  flex: '1 1 180px',
+                  minWidth: '180px',
+                }}
+              >
+                <div className="flex align-items-center gap-2 mb-2">
+                  <i className="pi pi-arrow-down-right text-xl" style={{ color: '#4ade80' }} />
+                  <span style={{ color: '#86efac', fontWeight: 600, fontSize: '0.85rem' }}>
+                    Est. Savings
+                  </span>
                 </div>
-              );
-            })()}
+                <div style={{ color: '#4ade80', fontSize: '1.5rem', fontWeight: 700 }}>
+                  ${totalEstimatedSavings.toFixed(2)}
+                </div>
+                <div style={{ color: '#4ade8088', fontSize: '0.75rem', marginTop: '4px' }}>
+                  if all suggestions applied
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Filters */}
