@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { InputText } from 'primereact/inputtext';
@@ -1097,123 +1097,173 @@ export default function ResourcesView({ provider }) {
 }
 
 // ---------------------------------------------------------------------------
-// GCP: console-style resource view with sub-category navigation
+// GCP: Google Cloud Console-style product navigation sidebar
 // ---------------------------------------------------------------------------
 
-// Compute Engine console sub-category navigation structure
-const GCE_CATEGORIES = [
+// GCP product navigation tree — mirrors the Google Cloud Console left nav.
+// Each section groups related products. Products may either map directly to a
+// single resourceType, or have subItems (shown inline in the sidebar when the
+// product is selected) that each map to a resourceType.
+const GCP_PRODUCT_NAV = [
   {
-    name: 'Virtual Machines',
-    icon: 'pi-server',
+    section: 'Compute',
     color: '#4285F4',
-    items: [
-      { label: 'VM Instances', resourceType: 'Compute Engine', description: 'Running and stopped virtual machine instances' },
+    products: [
+      {
+        id: 'compute-engine',
+        label: 'Compute Engine',
+        icon: 'pi-server',
+        subItems: [
+          { label: 'VM Instances', resourceType: 'Compute Engine', description: 'Running and stopped virtual machine instances' },
+          { label: 'Disks', resourceType: 'Persistent Disk', description: 'Persistent block storage volumes' },
+        ],
+      },
+      { id: 'gke', label: 'Kubernetes Engine', icon: 'pi-sitemap', resourceType: 'GKE' },
+      { id: 'app-engine', label: 'App Engine', icon: 'pi-globe', resourceType: 'App Engine' },
+      { id: 'cloud-run', label: 'Cloud Run', icon: 'pi-forward', resourceType: 'Cloud Run' },
+      { id: 'cloud-functions', label: 'Cloud Functions', icon: 'pi-bolt', resourceType: 'Cloud Functions' },
     ],
   },
   {
-    name: 'Storage',
-    icon: 'pi-database',
+    section: 'Storage',
     color: '#0F9D58',
-    items: [
-      { label: 'Disks', resourceType: 'Persistent Disk', description: 'Persistent block storage disks' },
-    ],
-  },
-];
-
-// GCP VPC Network console sub-category navigation structure
-const GCP_VPC_CATEGORIES = [
-  {
-    name: 'VPC Networks',
-    icon: 'pi-sitemap',
-    color: '#4285F4',
-    items: [
-      { label: 'VPC Networks', resourceType: 'VPC Network', description: 'Your virtual private cloud networks' },
+    products: [
+      { id: 'cloud-storage', label: 'Cloud Storage', icon: 'pi-database', resourceType: 'Cloud Storage' },
+      { id: 'filestore', label: 'Filestore', icon: 'pi-folder', resourceType: 'Filestore' },
     ],
   },
   {
-    name: 'Firewall',
-    icon: 'pi-shield',
+    section: 'Databases',
+    color: '#DB4437',
+    products: [
+      { id: 'cloud-sql', label: 'Cloud SQL', icon: 'pi-database', resourceType: 'Cloud SQL' },
+      { id: 'cloud-spanner', label: 'Cloud Spanner', icon: 'pi-table', resourceType: 'Cloud Spanner' },
+      { id: 'firestore-db', label: 'Firestore', icon: 'pi-file', resourceType: 'Firestore' },
+      { id: 'cloud-bigtable', label: 'Cloud Bigtable', icon: 'pi-table', resourceType: 'Cloud Bigtable' },
+      { id: 'memorystore', label: 'Memorystore', icon: 'pi-refresh', resourceType: 'Cloud Memorystore' },
+    ],
+  },
+  {
+    section: 'Analytics',
+    color: '#F4B400',
+    products: [
+      { id: 'bigquery', label: 'BigQuery', icon: 'pi-chart-bar', resourceType: 'BigQuery' },
+      { id: 'dataflow', label: 'Dataflow', icon: 'pi-sort-alt', resourceType: 'Dataflow' },
+      { id: 'dataproc', label: 'Dataproc', icon: 'pi-share-alt', resourceType: 'Dataproc' },
+      { id: 'pub-sub', label: 'Pub/Sub', icon: 'pi-send', resourceType: 'Pub/Sub' },
+      { id: 'composer', label: 'Cloud Composer', icon: 'pi-cog', resourceType: 'Cloud Composer' },
+    ],
+  },
+  {
+    section: 'Networking',
+    color: '#8B5CF6',
+    products: [
+      {
+        id: 'vpc',
+        label: 'VPC Network',
+        icon: 'pi-sitemap',
+        subItems: [
+          { label: 'VPC Networks', resourceType: 'VPC Network', description: 'Your virtual private cloud networks' },
+          { label: 'Firewall Rules', resourceType: 'Firewall Rule', description: 'Ingress and egress firewall rules' },
+          { label: 'Load Balancers', resourceType: 'Load Balancer', description: 'HTTP(S), SSL, and TCP load balancers' },
+          { label: 'IP Addresses', resourceType: 'IP Address', description: 'Reserved IP address resources' },
+        ],
+      },
+      { id: 'cloud-dns', label: 'Cloud DNS', icon: 'pi-globe', resourceType: 'Cloud DNS' },
+      { id: 'cloud-cdn', label: 'Cloud CDN', icon: 'pi-cloud', resourceType: 'Cloud CDN' },
+    ],
+  },
+  {
+    section: 'Operations',
+    color: '#10B981',
+    products: [
+      { id: 'cloud-monitoring', label: 'Cloud Monitoring', icon: 'pi-chart-line', resourceType: 'Cloud Monitoring' },
+      { id: 'cloud-logging', label: 'Cloud Logging', icon: 'pi-list', resourceType: 'Cloud Logging' },
+      { id: 'cloud-build', label: 'Cloud Build', icon: 'pi-cog', resourceType: 'Cloud Build' },
+      { id: 'artifact-registry', label: 'Artifact Registry', icon: 'pi-box', resourceType: 'Artifact Registry' },
+    ],
+  },
+  {
+    section: 'Security',
     color: '#EA4335',
-    items: [
-      { label: 'Firewall Rules', resourceType: 'Firewall Rule', description: 'Ingress and egress firewall rules' },
+    products: [
+      { id: 'service-accounts', label: 'Service Accounts', icon: 'pi-users', resourceType: 'Service Account' },
+      { id: 'secret-manager', label: 'Secret Manager', icon: 'pi-lock', resourceType: 'Secret Manager' },
+      { id: 'cloud-kms', label: 'Cloud KMS', icon: 'pi-key', resourceType: 'Cloud KMS' },
     ],
   },
   {
-    name: 'Load Balancing',
-    icon: 'pi-sliders-h',
-    color: '#FBBC05',
-    items: [
-      { label: 'Load Balancers', resourceType: 'Load Balancer', description: 'HTTP(S), SSL, and TCP load balancers' },
+    section: 'Serverless',
+    color: '#F97316',
+    products: [
+      { id: 'cloud-scheduler', label: 'Cloud Scheduler', icon: 'pi-calendar', resourceType: 'Cloud Scheduler' },
+      { id: 'cloud-tasks', label: 'Cloud Tasks', icon: 'pi-list', resourceType: 'Cloud Tasks' },
+      { id: 'api-gateway', label: 'API Gateway', icon: 'pi-link', resourceType: 'API Gateway' },
     ],
   },
   {
-    name: 'Network Services',
-    icon: 'pi-globe',
-    color: '#34A853',
-    items: [
-      { label: 'IP Addresses', resourceType: 'IP Address', description: 'External and internal IP address reservations' },
-      { label: 'Cloud DNS', resourceType: 'Cloud DNS', description: 'Managed DNS zones and record sets' },
-      { label: 'Cloud CDN', resourceType: 'Cloud CDN', description: 'Content delivery and caching' },
+    section: 'AI & ML',
+    color: '#A855F7',
+    products: [
+      { id: 'vertex-ai', label: 'Vertex AI', icon: 'pi-star', resourceType: 'Vertex AI' },
     ],
   },
 ];
 
-// All resource types that belong to the Compute Engine console
-const GCE_RESOURCE_TYPES = new Set(['Compute Engine', 'Persistent Disk']);
-
-// All resource types that belong to the VPC Network console
-const GCP_VPC_RESOURCE_TYPES = new Set([
-  'VPC Network', 'Firewall Rule', 'Load Balancer', 'IP Address', 'Cloud DNS', 'Cloud CDN',
-]);
-
-// Map of GCP sub-resource type → parent panel info (for search results)
-const GCP_SUB_RESOURCE_META = {};
-GCE_CATEGORIES.forEach((cat) => {
-  cat.items.forEach((item) => {
-    if (!GCP_SUB_RESOURCE_META[item.resourceType]) {
-      GCP_SUB_RESOURCE_META[item.resourceType] = { parent: 'Compute Engine', panel: 'GCE_PANEL', label: item.label };
-    }
-  });
-});
-GCP_VPC_CATEGORIES.forEach((cat) => {
-  cat.items.forEach((item) => {
-    if (!GCP_SUB_RESOURCE_META[item.resourceType]) {
-      GCP_SUB_RESOURCE_META[item.resourceType] = { parent: 'VPC Network', panel: 'VPC_PANEL', label: item.label };
-    }
+// Flat product id → {product, sectionColor} lookup built from GCP_PRODUCT_NAV
+const GCP_PRODUCT_LOOKUP = {};
+GCP_PRODUCT_NAV.forEach((section) => {
+  section.products.forEach((product) => {
+    GCP_PRODUCT_LOOKUP[product.id] = { ...product, sectionColor: section.color };
   });
 });
 
-const GCP_SERVICE_CATEGORIES = [
-  { name: 'Compute', icon: 'pi-server', color: '#4285F4', services: ['Compute Engine', 'GKE', 'App Engine', 'Cloud Run', 'Cloud Functions'] },
-  { name: 'Storage', icon: 'pi-database', color: '#0F9D58', services: ['Cloud Storage', 'Persistent Disk', 'Filestore'] },
-  { name: 'Databases', icon: 'pi-table', color: '#DB4437', services: ['Cloud SQL', 'Cloud Spanner', 'Firestore', 'Cloud Bigtable', 'Cloud Memorystore'] },
-  { name: 'Data & Analytics', icon: 'pi-chart-bar', color: '#F4B400', services: ['BigQuery', 'Dataflow', 'Dataproc', 'Pub/Sub', 'Cloud Composer'] },
-  { name: 'Networking', icon: 'pi-sitemap', color: '#8B5CF6', services: ['VPC Network', 'Load Balancer', 'Cloud DNS', 'Cloud CDN'] },
-  { name: 'Security', icon: 'pi-shield', color: '#EA4335', services: ['Service Account', 'Secret Manager', 'Cloud KMS'] },
-  { name: 'DevOps & Monitoring', icon: 'pi-cog', color: '#10B981', services: ['Cloud Build', 'Artifact Registry', 'Cloud Logging', 'Cloud Monitoring'] },
-  { name: 'Serverless & Integration', icon: 'pi-send', color: '#F97316', services: ['Cloud Scheduler', 'Cloud Tasks', 'API Gateway'] },
-  { name: 'AI & Machine Learning', icon: 'pi-bolt', color: '#A855F7', services: ['Vertex AI'] },
-];
+// ---------------------------------------------------------------------------
+// GcpResourcesView — Google Cloud Console-style navigation
+// Layout: persistent left sidebar (products) + dynamic right content area.
+//
+// States:
+//   activeProductId = null          → overview / welcome screen
+//   activeProductId set, no subItems → resource table for that product's type
+//   activeProductId set, has subItems, activeResourceType = null
+//                                   → sub-category cards for the product
+//   activeProductId set, has subItems, activeResourceType set
+//                                   → resource table for that sub-item's type
+// ---------------------------------------------------------------------------
 
 function GcpResourcesView() {
   const toast = useRef(null);
+
+  // Summary data from the API: [{type, count}, ...]
   const [summary, setSummary] = useState([]);
   const [apiError, setApiError] = useState(null);
   const [requiredRoles, setRequiredRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // null = service cards, 'GCE_PANEL' = Compute Engine sub-categories,
-  // 'VPC_PANEL' = VPC Network sub-categories, or a specific resource type string
-  const [selectedService, setSelectedService] = useState(null);
-  // Tracks which panel the user navigated from so the back button goes to the right place.
-  const [prevPanel, setPrevPanel] = useState(null);
-  // Active sidebar category index within GCE/VPC panel (null = "All")
-  const [activePanelCategory, setActivePanelCategory] = useState(null);
+
+  // Navigation state
+  const [activeProductId, setActiveProductId] = useState(null);
+  const [activeResourceType, setActiveResourceType] = useState(null);
+
+  // Sidebar state
+  const [expandedSections, setExpandedSections] = useState(
+    () => new Set(GCP_PRODUCT_NAV.map((s) => s.section)),
+  );
+  const [sidebarSearch, setSidebarSearch] = useState('');
+
+  // Resource table state
   const [serviceResources, setServiceResources] = useState([]);
   const [loadingResources, setLoadingResources] = useState(false);
   const [globalFilter, setGlobalFilter] = useState('');
-  const [serviceSearch, setServiceSearch] = useState('');
 
+  // resource type → count lookup built from summary
+  const countByType = useMemo(() => {
+    const map = {};
+    summary.forEach((s) => { map[s.type] = s.count; });
+    return map;
+  }, [summary]);
+
+  // ── Data fetching ──────────────────────────────────────────────────────────
   useEffect(() => {
     getResourceSummary()
       .then((r) => {
@@ -1237,20 +1287,12 @@ function GcpResourcesView() {
       .finally(() => setLoading(false));
   }, []);
 
-  const resetDrillDown = useCallback((nextService = null, nextPrevPanel = null) => {
-    setSelectedService(nextService);
-    setPrevPanel(nextPrevPanel);
-    setActivePanelCategory(null);
-    setServiceResources([]);
-    setGlobalFilter('');
-  }, []);
-
-  const loadResources = useCallback(async (serviceType) => {
-    setSelectedService(serviceType);
+  const loadResources = useCallback(async (resourceType) => {
+    setActiveResourceType(resourceType);
     setLoadingResources(true);
     setGlobalFilter('');
     try {
-      const res = await getResources([serviceType], null);
+      const res = await getResources([resourceType], null);
       setServiceResources(res.data.resources);
     } catch (err) {
       const msg = err?.response?.data?.detail || 'Failed to load resources';
@@ -1261,528 +1303,233 @@ function GcpResourcesView() {
     }
   }, []);
 
-  const handleServiceClick = useCallback((serviceType) => {
-    if (serviceType === 'Compute Engine') {
-      setPrevPanel(null);
-      setActivePanelCategory(null);
-      setSelectedService('GCE_PANEL');
-      return;
+  // ── Navigation handlers ────────────────────────────────────────────────────
+  const handleProductClick = useCallback((product) => {
+    setActiveProductId(product.id);
+    setGlobalFilter('');
+    if (product.subItems) {
+      // Products with sub-items show a sub-category card view first
+      setActiveResourceType(null);
+      setServiceResources([]);
+    } else {
+      // Direct products load their resource table immediately
+      loadResources(product.resourceType);
     }
-    if (serviceType === 'VPC Network') {
-      setPrevPanel(null);
-      setActivePanelCategory(null);
-      setSelectedService('VPC_PANEL');
-      return;
-    }
-    setPrevPanel(null);
-    loadResources(serviceType);
   }, [loadResources]);
 
-  const handleGceItemClick = useCallback((resourceType) => {
-    setPrevPanel('GCE_PANEL');
+  const handleSubItemClick = useCallback((e, resourceType) => {
+    e.stopPropagation();
     loadResources(resourceType);
   }, [loadResources]);
 
-  const handleVpcItemClick = useCallback((resourceType) => {
-    setPrevPanel('VPC_PANEL');
-    loadResources(resourceType);
-  }, [loadResources]);
+  const toggleSection = useCallback((sectionName) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionName)) next.delete(sectionName);
+      else next.add(sectionName);
+      return next;
+    });
+  }, []);
 
-  const handleBack = useCallback(() => {
-    resetDrillDown(prevPanel, null);
-  }, [prevPanel, resetDrillDown]);
-
-  const handleBackToServices = useCallback(() => {
-    resetDrillDown(null, null);
-  }, [resetDrillDown]);
-
+  // ── Early returns ──────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex justify-content-center align-items-center flex-column gap-3" style={{ minHeight: '300px' }}>
         <ProgressSpinner style={{ width: '50px', height: '50px' }} strokeWidth="4" />
-        <span className="text-sm" style={{ color: '#94a3b8' }}>Loading services…</span>
+        <span className="text-sm" style={{ color: '#94a3b8' }}>Loading GCP resources…</span>
       </div>
     );
   }
 
-  if (error) return (
-    <>
-      <Toast ref={toast} />
-      <Message severity="error" text={error} className="w-full" />
-    </>
-  );
-
-  // --- Compute Engine sub-category panel (sidebar + content layout) ---
-  if (selectedService === 'GCE_PANEL') {
-    const visibleCategories = activePanelCategory === null
-      ? GCE_CATEGORIES
-      : GCE_CATEGORIES.filter((_, i) => i === activePanelCategory);
+  if (error) {
     return (
-      <div className="flex flex-column gap-3">
+      <>
         <Toast ref={toast} />
+        <Message severity="error" text={error} className="w-full" />
+      </>
+    );
+  }
 
-        {/* Header */}
-        <div className="flex align-items-center gap-2">
-          <Button
-            icon="pi pi-arrow-left"
-            label="Back to Services"
-            className="p-button-text p-button-sm"
-            onClick={handleBackToServices}
-            style={{ color: '#a5b4fc' }}
-          />
-          <span style={{ color: '#475569' }}>›</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <div style={{
-              width: '24px', height: '24px', borderRadius: '6px',
-              background: '#4285F422',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <i className="pi pi-server" style={{ color: '#4285F4', fontSize: '0.8rem' }} />
-            </div>
-            <span style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.95rem' }}>Compute Engine</span>
-          </div>
+  // ── Derived values ─────────────────────────────────────────────────────────
+  const activeProduct = activeProductId ? GCP_PRODUCT_LOOKUP[activeProductId] : null;
+
+  // Filter sidebar products by the search query
+  const filteredNav = sidebarSearch.trim()
+    ? GCP_PRODUCT_NAV
+        .map((section) => ({
+          ...section,
+          products: section.products.filter((p) => {
+            const q = sidebarSearch.toLowerCase();
+            return (
+              p.label.toLowerCase().includes(q) ||
+              p.subItems?.some((s) => s.label.toLowerCase().includes(q))
+            );
+          }),
+        }))
+        .filter((section) => section.products.length > 0)
+    : GCP_PRODUCT_NAV;
+
+  // ── Sidebar ────────────────────────────────────────────────────────────────
+  const sidebar = (
+    <div style={{
+      width: '220px',
+      flexShrink: 0,
+      background: '#1e293b',
+      borderRadius: '12px',
+      border: '1px solid #334155',
+      display: 'flex',
+      flexDirection: 'column',
+      maxHeight: 'calc(100vh - 160px)',
+    }}>
+      {/* Header + search */}
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid #334155', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+          <i className="pi pi-cloud" style={{ color: '#4285F4', fontSize: '0.9rem' }} />
+          <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '0.85rem' }}>GCP Console</span>
         </div>
+        <div style={{ position: 'relative' }}>
+          <i className="pi pi-search" style={{
+            position: 'absolute', left: '8px', top: '50%',
+            transform: 'translateY(-50%)', color: '#64748b',
+            fontSize: '0.75rem', pointerEvents: 'none',
+          }} />
+          <input
+            type="text"
+            value={sidebarSearch}
+            onChange={(e) => setSidebarSearch(e.target.value)}
+            placeholder="Search products…"
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              paddingLeft: '28px', paddingRight: '8px',
+              paddingTop: '5px', paddingBottom: '5px',
+              background: '#0f172a', border: '1px solid #334155',
+              borderRadius: '6px', color: '#e2e8f0',
+              fontSize: '0.78rem', outline: 'none',
+            }}
+          />
+        </div>
+      </div>
 
-        {/* Sidebar + Content */}
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-          {/* Left sidebar */}
-          <div style={{
-            width: '210px', flexShrink: 0, background: '#1e293b',
-            borderRadius: '12px', border: '1px solid #334155', overflow: 'hidden',
-          }}>
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Categories
-            </div>
+      {/* Product list */}
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {filteredNav.map((section) => (
+          <div key={section.section}>
+            {/* Section label — click to collapse/expand */}
             <div
-              onClick={() => setActivePanelCategory(null)}
+              onClick={() => toggleSection(section.section)}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '10px 14px', cursor: 'pointer',
-                background: activePanelCategory === null ? '#4285F422' : 'transparent',
-                borderLeft: activePanelCategory === null ? '3px solid #4285F4' : '3px solid transparent',
-                transition: 'background 0.15s',
+                padding: '8px 12px 4px', cursor: 'pointer',
               }}
-              onMouseEnter={(e) => { if (activePanelCategory !== null) e.currentTarget.style.background = '#ffffff08'; }}
-              onMouseLeave={(e) => { if (activePanelCategory !== null) e.currentTarget.style.background = 'transparent'; }}
             >
-              <span style={{ color: activePanelCategory === null ? '#93c5fd' : '#cbd5e1', fontSize: '0.85rem', fontWeight: activePanelCategory === null ? 600 : 400 }}>All</span>
-              <span style={{ background: '#4285F422', color: '#60a5fa', borderRadius: '10px', padding: '1px 7px', fontSize: '0.7rem', fontWeight: 600 }}>
-                {GCE_CATEGORIES.reduce((a, c) => a + c.items.length, 0)}
+              <span style={{
+                color: '#475569', fontSize: '0.67rem', fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.07em',
+              }}>
+                {section.section}
               </span>
+              <i
+                className={`pi ${expandedSections.has(section.section) ? 'pi-chevron-down' : 'pi-chevron-right'}`}
+                style={{ color: '#475569', fontSize: '0.62rem' }}
+              />
             </div>
-            {GCE_CATEGORIES.map((cat, idx) => (
-              <div
-                key={cat.name}
-                onClick={() => setActivePanelCategory(idx)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '10px 14px', cursor: 'pointer',
-                  background: activePanelCategory === idx ? `${cat.color}18` : 'transparent',
-                  borderLeft: activePanelCategory === idx ? `3px solid ${cat.color}` : '3px solid transparent',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => { if (activePanelCategory !== idx) e.currentTarget.style.background = '#ffffff08'; }}
-                onMouseLeave={(e) => { if (activePanelCategory !== idx) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <i className={`pi ${cat.icon}`} style={{ color: activePanelCategory === idx ? cat.color : '#64748b', fontSize: '0.8rem' }} />
-                  <span style={{ color: activePanelCategory === idx ? '#f1f5f9' : '#94a3b8', fontSize: '0.82rem', fontWeight: activePanelCategory === idx ? 600 : 400 }}>
-                    {cat.name}
-                  </span>
-                </div>
-                <span style={{ background: `${cat.color}22`, color: cat.color, borderRadius: '10px', padding: '1px 6px', fontSize: '0.68rem', fontWeight: 600 }}>
-                  {cat.items.length}
-                </span>
-              </div>
-            ))}
-          </div>
 
-          {/* Right content area */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {visibleCategories.map((category) => (
-              <div key={category.name} style={{ marginBottom: '1.25rem' }}>
-                <div className="flex align-items-center gap-2" style={{ marginBottom: '0.75rem' }}>
-                  <div style={{
-                    width: '28px', height: '28px', borderRadius: '7px',
-                    background: `${category.color}22`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                  }}>
-                    <i className={`pi ${category.icon}`} style={{ color: category.color, fontSize: '0.9rem' }} />
-                  </div>
-                  <span style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.9rem' }}>{category.name}</span>
-                  <span style={{ background: `${category.color}22`, color: category.color, borderRadius: '12px', padding: '1px 8px', fontSize: '0.72rem', fontWeight: 600 }}>
-                    {category.items.length}
-                  </span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.6rem' }}>
-                  {category.items.map((item) => (
-                    <div
-                      key={item.resourceType}
-                      onClick={() => handleGceItemClick(item.resourceType)}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '0.65rem 0.9rem', borderRadius: '8px', cursor: 'pointer',
-                        background: '#1e293b', border: '1px solid #334155',
-                        transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = category.color;
-                        e.currentTarget.style.background = `${category.color}11`;
-                        e.currentTarget.style.boxShadow = `0 2px 12px ${category.color}22`;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = '#334155';
-                        e.currentTarget.style.background = '#1e293b';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ color: '#e2e8f0', fontSize: '0.875rem', fontWeight: 500, marginBottom: '2px' }}>
-                          {item.label}
-                        </div>
-                        <div style={{ color: '#64748b', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {item.description}
-                        </div>
-                      </div>
-                      <i className="pi pi-chevron-right" style={{ color: `${category.color}88`, fontSize: '0.75rem', flexShrink: 0, marginLeft: '6px' }} />
+            {expandedSections.has(section.section) && section.products.map((product) => {
+              const isActive = activeProductId === product.id;
+              const productCount = product.subItems
+                ? product.subItems.reduce((acc, s) => acc + (countByType[s.resourceType] || 0), 0)
+                : (countByType[product.resourceType] || 0);
+
+              return (
+                <div key={product.id}>
+                  {/* Product row */}
+                  <div
+                    onClick={() => handleProductClick(product)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '7px 10px 7px 16px', cursor: 'pointer',
+                      background: isActive ? `${section.color}18` : 'transparent',
+                      borderLeft: isActive ? `3px solid ${section.color}` : '3px solid transparent',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = '#ffffff08'; }}
+                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, flex: 1 }}>
+                      <i
+                        className={`pi ${product.icon}`}
+                        style={{ color: isActive ? section.color : '#64748b', fontSize: '0.8rem', flexShrink: 0 }}
+                      />
+                      <span style={{
+                        color: isActive ? '#f1f5f9' : '#94a3b8',
+                        fontSize: '0.82rem', fontWeight: isActive ? 600 : 400,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {product.label}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // --- VPC Network sub-category panel (sidebar + content layout) ---
-  if (selectedService === 'VPC_PANEL') {
-    const visibleVpcCategories = activePanelCategory === null
-      ? GCP_VPC_CATEGORIES
-      : GCP_VPC_CATEGORIES.filter((_, i) => i === activePanelCategory);
-    return (
-      <div className="flex flex-column gap-3">
-        <Toast ref={toast} />
-
-        {/* Header */}
-        <div className="flex align-items-center gap-2">
-          <Button
-            icon="pi pi-arrow-left"
-            label="Back to Services"
-            className="p-button-text p-button-sm"
-            onClick={handleBackToServices}
-            style={{ color: '#a5b4fc' }}
-          />
-          <span style={{ color: '#475569' }}>›</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <div style={{
-              width: '24px', height: '24px', borderRadius: '6px',
-              background: '#4285F422',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <i className="pi pi-sitemap" style={{ color: '#4285F4', fontSize: '0.8rem' }} />
-            </div>
-            <span style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.95rem' }}>VPC Network</span>
-          </div>
-        </div>
-
-        {/* Sidebar + Content */}
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-          {/* Left sidebar */}
-          <div style={{
-            width: '210px', flexShrink: 0, background: '#1e293b',
-            borderRadius: '12px', border: '1px solid #334155', overflow: 'hidden',
-          }}>
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Categories
-            </div>
-            <div
-              onClick={() => setActivePanelCategory(null)}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '10px 14px', cursor: 'pointer',
-                background: activePanelCategory === null ? '#4285F422' : 'transparent',
-                borderLeft: activePanelCategory === null ? '3px solid #4285F4' : '3px solid transparent',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={(e) => { if (activePanelCategory !== null) e.currentTarget.style.background = '#ffffff08'; }}
-              onMouseLeave={(e) => { if (activePanelCategory !== null) e.currentTarget.style.background = 'transparent'; }}
-            >
-              <span style={{ color: activePanelCategory === null ? '#93c5fd' : '#cbd5e1', fontSize: '0.85rem', fontWeight: activePanelCategory === null ? 600 : 400 }}>All</span>
-              <span style={{ background: '#4285F422', color: '#60a5fa', borderRadius: '10px', padding: '1px 7px', fontSize: '0.7rem', fontWeight: 600 }}>
-                {GCP_VPC_CATEGORIES.reduce((a, c) => a + c.items.length, 0)}
-              </span>
-            </div>
-            {GCP_VPC_CATEGORIES.map((cat, idx) => (
-              <div
-                key={cat.name}
-                onClick={() => setActivePanelCategory(idx)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '10px 14px', cursor: 'pointer',
-                  background: activePanelCategory === idx ? `${cat.color}18` : 'transparent',
-                  borderLeft: activePanelCategory === idx ? `3px solid ${cat.color}` : '3px solid transparent',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => { if (activePanelCategory !== idx) e.currentTarget.style.background = '#ffffff08'; }}
-                onMouseLeave={(e) => { if (activePanelCategory !== idx) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <i className={`pi ${cat.icon}`} style={{ color: activePanelCategory === idx ? cat.color : '#64748b', fontSize: '0.8rem' }} />
-                  <span style={{ color: activePanelCategory === idx ? '#f1f5f9' : '#94a3b8', fontSize: '0.82rem', fontWeight: activePanelCategory === idx ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>
-                    {cat.name}
-                  </span>
-                </div>
-                <span style={{ background: `${cat.color}22`, color: cat.color, borderRadius: '10px', padding: '1px 6px', fontSize: '0.68rem', fontWeight: 600, flexShrink: 0 }}>
-                  {cat.items.length}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Right content area */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {visibleVpcCategories.map((category) => (
-              <div key={category.name} style={{ marginBottom: '1.25rem' }}>
-                <div className="flex align-items-center gap-2" style={{ marginBottom: '0.75rem' }}>
-                  <div style={{
-                    width: '28px', height: '28px', borderRadius: '7px',
-                    background: `${category.color}22`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                  }}>
-                    <i className={`pi ${category.icon}`} style={{ color: category.color, fontSize: '0.9rem' }} />
-                  </div>
-                  <span style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.9rem' }}>{category.name}</span>
-                  <span style={{ background: `${category.color}22`, color: category.color, borderRadius: '12px', padding: '1px 8px', fontSize: '0.72rem', fontWeight: 600 }}>
-                    {category.items.length}
-                  </span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.6rem' }}>
-                  {category.items.map((item) => (
-                    <div
-                      key={item.resourceType}
-                      onClick={() => handleVpcItemClick(item.resourceType)}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '0.65rem 0.9rem', borderRadius: '8px', cursor: 'pointer',
-                        background: '#1e293b', border: '1px solid #334155',
-                        transition: 'border-color 0.15s, background 0.15s, box-shadow 0.15s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = category.color;
-                        e.currentTarget.style.background = `${category.color}11`;
-                        e.currentTarget.style.boxShadow = `0 2px 12px ${category.color}22`;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = '#334155';
-                        e.currentTarget.style.background = '#1e293b';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ color: '#e2e8f0', fontSize: '0.875rem', fontWeight: 500, marginBottom: '2px' }}>
-                          {item.label}
-                        </div>
-                        <div style={{ color: '#64748b', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {item.description}
-                        </div>
-                      </div>
-                      <i className="pi pi-chevron-right" style={{ color: `${category.color}88`, fontSize: '0.75rem', flexShrink: 0, marginLeft: '6px' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                      {productCount > 0 && (
+                        <span style={{
+                          background: `${section.color}22`, color: section.color,
+                          borderRadius: '10px', padding: '1px 6px',
+                          fontSize: '0.65rem', fontWeight: 600,
+                        }}>
+                          {productCount}
+                        </span>
+                      )}
+                      {product.subItems && (
+                        <i className="pi pi-chevron-right" style={{ color: '#475569', fontSize: '0.62rem' }} />
+                      )}
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Sub-items — shown inline under the product when it is active */}
+                  {isActive && product.subItems && product.subItems.map((sub) => {
+                    const isSubActive = activeResourceType === sub.resourceType;
+                    return (
+                      <div
+                        key={sub.resourceType}
+                        onClick={(e) => handleSubItemClick(e, sub.resourceType)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '5px 10px 5px 36px', cursor: 'pointer',
+                          background: isSubActive ? `${section.color}22` : 'transparent',
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={(e) => { if (!isSubActive) e.currentTarget.style.background = '#ffffff08'; }}
+                        onMouseLeave={(e) => { if (!isSubActive) e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <span style={{
+                          color: isSubActive ? '#f1f5f9' : '#64748b',
+                          fontSize: '0.78rem', fontWeight: isSubActive ? 600 : 400,
+                        }}>
+                          {sub.label}
+                        </span>
+                        {(countByType[sub.resourceType] || 0) > 0 && (
+                          <span style={{
+                            background: `${section.color}22`, color: section.color,
+                            borderRadius: '10px', padding: '1px 5px',
+                            fontSize: '0.62rem', fontWeight: 600, flexShrink: 0,
+                          }}>
+                            {countByType[sub.resourceType]}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
+        ))}
       </div>
-    );
-  }
-
-  // --- Drill-down: resources for a specific service ---
-  if (selectedService) {
-    const tableHeader = (
-      <div className="flex justify-content-between align-items-center flex-wrap gap-3"
-           style={{ background: '#1e293b', padding: '0.75rem 1rem' }}>
-        <span className="text-lg font-semibold flex align-items-center gap-2" style={{ color: '#f1f5f9' }}>
-          <i className={`pi ${TYPE_ICON[selectedService] || 'pi-box'}`} style={{ color: '#4285F4' }} />
-          {selectedService}
-          <Badge value={serviceResources.length}
-            style={{ background: 'linear-gradient(135deg,#4285F4,#0F9D58)', color: '#fff' }} />
-        </span>
-        <span className="p-input-icon-left">
-          <i className="pi pi-search" />
-          <InputText
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            placeholder="Search resources…"
-            style={{ borderRadius: '20px' }}
-          />
-        </span>
-      </div>
-    );
-
-    const backLabel = prevPanel === 'GCE_PANEL' ? 'Back to Compute Engine' : prevPanel === 'VPC_PANEL' ? 'Back to VPC Network' : 'Back to Services';
-
-    return (
-      <div className="flex flex-column gap-4">
-        <Toast ref={toast} />
-        <div className="flex align-items-center gap-2">
-          <Button
-            icon="pi pi-arrow-left"
-            label={backLabel}
-            className="p-button-text"
-            onClick={handleBack}
-            style={{ color: '#a5b4fc' }}
-          />
-        </div>
-        {loadingResources ? (
-          <div className="flex justify-content-center align-items-center flex-column gap-2" style={{ minHeight: '200px' }}>
-            <ProgressSpinner style={{ width: '36px', height: '36px' }} strokeWidth="4" />
-            <span className="text-sm" style={{ color: '#94a3b8' }}>Loading resources…</span>
-          </div>
-        ) : (
-          <DataTable
-            value={serviceResources}
-            header={tableHeader}
-            globalFilter={globalFilter}
-            paginator
-            rows={10}
-            rowsPerPageOptions={[10, 25, 50]}
-            sortMode="multiple"
-            removableSort
-            stripedRows
-            emptyMessage={
-              <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
-                <i className="pi pi-inbox text-4xl" />
-                <span>No resources found for {selectedService}.</span>
-              </div>
-            }
-            style={{ borderRadius: '16px', overflow: 'hidden' }}
-          >
-            <Column field="name" header="Name" sortable style={{ minWidth: '160px', fontWeight: 500 }} />
-            <Column field="type" header="Type" body={typeTemplate} sortable style={{ minWidth: '150px' }} />
-            <Column field="region" header="Region / Zone" sortable style={{ minWidth: '120px' }} />
-            <Column field="status" header="Status" body={statusTemplate} sortable style={{ minWidth: '110px' }} />
-            <Column header="Configuration" body={detailsTemplate} style={{ minWidth: '260px' }} />
-            <Column field="tags" header="Labels" body={tagsTemplate} style={{ minWidth: '220px' }} />
-          </DataTable>
-        )}
-      </div>
-    );
-  }
-
-  // --- Overview: categorized service cards grid ---
-  const searchLower = serviceSearch.trim().toLowerCase();
-
-  // Filter out GCE and VPC sub-types from the top-level cards (they appear inside the respective panels)
-  const topLevelSummary = summary.filter((s) =>
-    (!GCE_RESOURCE_TYPES.has(s.type) || s.type === 'Compute Engine') &&
-    (!GCP_VPC_RESOURCE_TYPES.has(s.type) || s.type === 'VPC Network')
+    </div>
   );
 
-  // When searching, also include matching sub-resources
-  const gcpSubResourceSummary = searchLower
-    ? summary.filter((s) =>
-        ((GCE_RESOURCE_TYPES.has(s.type) && s.type !== 'Compute Engine') ||
-         (GCP_VPC_RESOURCE_TYPES.has(s.type) && s.type !== 'VPC Network')) &&
-        s.type.toLowerCase().includes(searchLower)
-      )
-    : [];
-
-  const filteredSummary = searchLower
-    ? [
-        ...topLevelSummary.filter((s) => s.type.toLowerCase().includes(searchLower)),
-        ...gcpSubResourceSummary,
-      ]
-    : topLevelSummary;
-
-  const renderGcpServiceCard = (svc, overrideColor) => {
-    const icon = TYPE_ICON[svc.type] || 'pi-box';
-    const colorIdx = svc.type.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % TYPE_COLORS.length;
-    const color = overrideColor || TYPE_COLORS[colorIdx];
-    const isGceCard = svc.type === 'Compute Engine';
-    const isVpcCard = svc.type === 'VPC Network';
-    const isPanelCard = isGceCard || isVpcCard;
-    const subMeta = GCP_SUB_RESOURCE_META[svc.type];
-    return (
-      <div
-        key={svc.type}
-        onClick={() => {
-          if (subMeta && !isPanelCard) {
-            loadResources(svc.type);
-          } else {
-            handleServiceClick(svc.type);
-          }
-        }}
-        style={{
-          background: '#1e293b',
-          border: isPanelCard ? `1px solid ${color}66` : '1px solid #334155',
-          borderRadius: '12px',
-          padding: '1rem 0.9rem',
-          cursor: 'pointer',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.6rem',
-          transition: 'border-color 0.2s, transform 0.15s, box-shadow 0.2s',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = color;
-          e.currentTarget.style.transform = 'translateY(-2px)';
-          e.currentTarget.style.boxShadow = `0 4px 20px ${color}22`;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = isPanelCard ? `${color}66` : '#334155';
-          e.currentTarget.style.transform = 'translateY(0)';
-          e.currentTarget.style.boxShadow = 'none';
-        }}
-      >
-        <div className="flex align-items-center gap-2">
-          <div style={{
-            width: '34px', height: '34px', borderRadius: '8px',
-            background: `${color}22`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-          }}>
-            <i className={`pi ${icon}`} style={{ color, fontSize: '1rem' }} />
-          </div>
-          <div className="flex flex-column" style={{ flex: 1, minWidth: 0 }}>
-            <span className="font-semibold" style={{ color: '#f1f5f9', fontSize: '0.85rem', lineHeight: '1.3' }}>
-              {svc.type}
-            </span>
-            {subMeta && (
-              <span style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '1px' }}>
-                via {subMeta.parent}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex align-items-center justify-content-between">
-          <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
-            {isPanelCard ? 'Sub-categories' : 'Resources'}
-          </span>
-          {isGceCard ? (
-            <span style={{ background: `${color}22`, color, borderRadius: '20px', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 600 }}>
-              {GCE_CATEGORIES.length} groups
-            </span>
-          ) : isVpcCard ? (
-            <span style={{ background: `${color}22`, color, borderRadius: '20px', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 600 }}>
-              {GCP_VPC_CATEGORIES.length} groups
-            </span>
-          ) : (
-            <span style={{ background: `${color}22`, color, borderRadius: '20px', padding: '2px 8px', fontSize: '0.82rem', fontWeight: 700 }}>
-              {svc.count}
-            </span>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="flex flex-column gap-4">
-      <Toast ref={toast} />
-
+  // ── Overview panel (no product selected) ──────────────────────────────────
+  const overviewPanel = (
+    <div className="flex flex-column gap-4" style={{ flex: 1, minWidth: 0 }}>
       {/* IAM / API error banner */}
       {apiError && (
         <div style={{
@@ -1808,7 +1555,11 @@ function GcpResourcesView() {
               <div className="flex flex-column gap-1 mt-1">
                 {requiredRoles.map((r) => (
                   <div key={r.role} className="flex align-items-start gap-2 text-sm">
-                    <span style={{ background: '#1d4ed8', color: '#bfdbfe', borderRadius: '6px', padding: '1px 8px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                    <span style={{
+                      background: '#1d4ed8', color: '#bfdbfe',
+                      borderRadius: '6px', padding: '1px 8px',
+                      fontFamily: 'monospace', whiteSpace: 'nowrap',
+                    }}>
                       {r.role}
                     </span>
                     <span style={{ color: '#94a3b8' }}>{r.purpose}</span>
@@ -1820,145 +1571,235 @@ function GcpResourcesView() {
         </div>
       )}
 
-      {/* Summary header card */}
-      {!searchLower && (
-        <div style={{
-          background: '#1e293b', border: '1px solid #334155',
-          borderRadius: '16px', padding: '1rem 1.25rem',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          flexWrap: 'wrap', gap: '1rem',
-        }}>
-          <div className="flex align-items-center gap-3">
-            <div style={{
-              width: '44px', height: '44px', borderRadius: '12px',
-              background: 'linear-gradient(135deg,#4285F4,#0F9D58)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              boxShadow: '0 4px 16px #4285F444',
-            }}>
-              <i className="pi pi-cloud" style={{ color: '#fff', fontSize: '1.25rem' }} />
-            </div>
-            <div>
-              <div className="font-bold" style={{ color: '#f1f5f9', fontSize: '1rem' }}>GCP Resources</div>
-              <div className="text-sm" style={{ color: '#94a3b8' }}>
-                {topLevelSummary.reduce((acc, s) => acc + (s.count || 0), 0).toLocaleString()} total resources across {topLevelSummary.length} services
-              </div>
-            </div>
+      {/* Summary header */}
+      <div style={{
+        background: '#1e293b', border: '1px solid #334155',
+        borderRadius: '16px', padding: '1.5rem',
+      }}>
+        <div className="flex align-items-center gap-3 mb-4">
+          <div style={{
+            width: '48px', height: '48px', borderRadius: '12px',
+            background: 'linear-gradient(135deg,#4285F4,#0F9D58)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 16px #4285F444',
+          }}>
+            <i className="pi pi-cloud" style={{ color: '#fff', fontSize: '1.3rem' }} />
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {GCP_SERVICE_CATEGORIES.slice(0, 4).map((cat) => {
-              const summaryMap = Object.fromEntries(topLevelSummary.map((s) => [s.type, s]));
-              const count = cat.services.reduce((a, t) => a + (summaryMap[t]?.count || 0), 0);
-              if (count === 0) return null;
-              return (
-                <div key={cat.name} style={{
-                  background: '#0f172a', border: '1px solid #334155',
-                  borderRadius: '10px', padding: '6px 12px',
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                }}>
-                  <i className={`pi ${cat.icon}`} style={{ color: cat.color, fontSize: '0.8rem' }} />
-                  <span style={{ color: cat.color, fontWeight: 700, fontSize: '0.85rem' }}>{count}</span>
-                  <span style={{ color: '#64748b', fontSize: '0.72rem' }}>{cat.name}</span>
-                </div>
-              );
-            })}
+          <div>
+            <div className="font-bold" style={{ color: '#f1f5f9', fontSize: '1.1rem' }}>
+              Google Cloud Console
+            </div>
+            <div className="text-sm" style={{ color: '#94a3b8' }}>
+              {summary.reduce((acc, s) => acc + (s.count || 0), 0).toLocaleString()} resources
+              across {summary.length} services
+            </div>
           </div>
         </div>
-      )}
 
-      <div className="flex align-items-center justify-content-between flex-wrap gap-3">
-        <div className="flex align-items-center gap-2">
-          <i className="pi pi-th-large" style={{ color: '#4285F4', fontSize: '1.2rem' }} />
-          <span className="text-lg font-semibold" style={{ color: '#f1f5f9' }}>
-            GCP Services
-          </span>
-          <Badge value={filteredSummary.length} style={{ background: 'linear-gradient(135deg,#4285F4,#0F9D58)', color: '#fff' }} />
+        {/* Per-section resource counts */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+          gap: '0.65rem',
+        }}>
+          {GCP_PRODUCT_NAV.map((section) => {
+            const count = section.products.reduce((acc, p) => {
+              if (p.subItems) {
+                return acc + p.subItems.reduce((a, s) => a + (countByType[s.resourceType] || 0), 0);
+              }
+              return acc + (countByType[p.resourceType] || 0);
+            }, 0);
+            if (count === 0) return null;
+            return (
+              <div
+                key={section.section}
+                style={{
+                  background: '#0f172a', border: '1px solid #334155',
+                  borderRadius: '10px', padding: '10px 14px',
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                }}
+              >
+                <span style={{ color: section.color, fontWeight: 700, fontSize: '1rem' }}>
+                  {count}
+                </span>
+                <span style={{ color: '#64748b', fontSize: '0.78rem' }}>{section.section}</span>
+              </div>
+            );
+          })}
         </div>
-        <span className="p-input-icon-left">
-          <i className="pi pi-search" />
-          <InputText
-            value={serviceSearch}
-            onChange={(e) => setServiceSearch(e.target.value)}
-            placeholder="Search services…"
-            style={{ borderRadius: '20px', minWidth: '220px' }}
-          />
+      </div>
+
+      <div style={{ color: '#64748b', fontSize: '0.85rem', textAlign: 'center', padding: '1rem 0' }}>
+        <i className="pi pi-arrow-left mr-2" style={{ fontSize: '0.75rem' }} />
+        Select a product from the left navigation to view resources
+      </div>
+    </div>
+  );
+
+  // ── Sub-category cards panel (product with subItems selected, no sub-item yet) ──
+  const subCategoryPanel = activeProduct?.subItems ? (
+    <div className="flex flex-column gap-4" style={{ flex: 1, minWidth: 0 }}>
+      {/* Product heading */}
+      <div className="flex align-items-center gap-2">
+        <div style={{
+          width: '34px', height: '34px', borderRadius: '8px',
+          background: `${activeProduct.sectionColor}22`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <i className={`pi ${activeProduct.icon}`} style={{ color: activeProduct.sectionColor, fontSize: '0.95rem' }} />
+        </div>
+        <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '1.1rem' }}>
+          {activeProduct.label}
         </span>
       </div>
 
-      {!searchLower ? (
-        // Categorized view
-        <div className="flex flex-column gap-5">
-          {(() => {
-            const summaryMap = Object.fromEntries(topLevelSummary.map((s) => [s.type, s]));
-            const categorized = new Set();
-            return (
-              <>
-                {GCP_SERVICE_CATEGORIES.map((cat) => {
-                  const catServices = cat.services
-                    .map((t) => summaryMap[t])
-                    .filter(Boolean);
-                  if (catServices.length === 0) return null;
-                  catServices.forEach((s) => categorized.add(s.type));
-                  return (
-                    <div key={cat.name}>
-                      <div className="flex align-items-center gap-2 mb-3"
-                        style={{ borderBottom: `2px solid ${cat.color}33`, paddingBottom: '0.5rem' }}>
-                        <div style={{
-                          width: '28px', height: '28px', borderRadius: '6px',
-                          background: `${cat.color}22`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <i className={`pi ${cat.icon}`} style={{ color: cat.color, fontSize: '0.9rem' }} />
-                        </div>
-                        <span className="font-semibold" style={{ color: '#cbd5e1', fontSize: '0.95rem' }}>
-                          {cat.name}
-                        </span>
-                        <span style={{ background: `${cat.color}22`, color: cat.color, borderRadius: '12px', padding: '1px 8px', fontSize: '0.75rem', fontWeight: 600 }}>
-                          {catServices.length}
-                        </span>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '0.75rem' }}>
-                        {catServices.map((svc) => renderGcpServiceCard(svc, cat.color))}
-                      </div>
-                    </div>
-                  );
-                })}
-                {(() => {
-                  const uncategorized = topLevelSummary.filter((s) => !categorized.has(s.type));
-                  if (uncategorized.length === 0) return null;
-                  return (
-                    <div key="other">
-                      <div className="flex align-items-center gap-2 mb-3"
-                        style={{ borderBottom: '2px solid #33415533', paddingBottom: '0.5rem' }}>
-                        <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#33415522', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <i className="pi pi-box" style={{ color: '#94a3b8', fontSize: '0.9rem' }} />
-                        </div>
-                        <span className="font-semibold" style={{ color: '#cbd5e1', fontSize: '0.95rem' }}>
-                          Other Services
-                        </span>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '0.75rem' }}>
-                        {uncategorized.map((svc) => renderGcpServiceCard(svc))}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </>
-            );
-          })()}
+      {/* Sub-category cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+        gap: '1rem',
+      }}>
+        {activeProduct.subItems.map((sub) => {
+          const count = countByType[sub.resourceType] || 0;
+          const icon = TYPE_ICON[sub.resourceType] || 'pi-box';
+          return (
+            <div
+              key={sub.resourceType}
+              onClick={() => loadResources(sub.resourceType)}
+              style={{
+                background: '#1e293b', border: '1px solid #334155',
+                borderRadius: '14px', padding: '1.25rem 1.2rem',
+                cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.75rem',
+                transition: 'border-color 0.2s, transform 0.15s, box-shadow 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = activeProduct.sectionColor;
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = `0 4px 20px ${activeProduct.sectionColor}22`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#334155';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            >
+              <div className="flex align-items-center gap-3">
+                <div style={{
+                  width: '42px', height: '42px', borderRadius: '10px',
+                  background: `${activeProduct.sectionColor}22`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <i className={`pi ${icon}`} style={{ color: activeProduct.sectionColor, fontSize: '1.1rem' }} />
+                </div>
+                <div>
+                  <div style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.95rem' }}>
+                    {sub.label}
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.78rem', marginTop: '2px' }}>
+                    {sub.description}
+                  </div>
+                </div>
+              </div>
+              <div className="flex align-items-center justify-content-between">
+                <span style={{ color: '#64748b', fontSize: '0.75rem' }}>Resources</span>
+                <span style={{
+                  background: `${activeProduct.sectionColor}22`,
+                  color: activeProduct.sectionColor,
+                  borderRadius: '20px', padding: '3px 12px',
+                  fontSize: '0.88rem', fontWeight: 700,
+                }}>
+                  {count}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
+
+  // ── Resource table panel ───────────────────────────────────────────────────
+  const tableHeader = (
+    <div
+      className="flex justify-content-between align-items-center flex-wrap gap-3"
+      style={{ background: '#1e293b', padding: '0.75rem 1rem' }}
+    >
+      <span className="text-lg font-semibold flex align-items-center gap-2" style={{ color: '#f1f5f9' }}>
+        <i
+          className={`pi ${TYPE_ICON[activeResourceType] || 'pi-box'}`}
+          style={{ color: activeProduct?.sectionColor || '#4285F4' }}
+        />
+        {activeResourceType}
+        <Badge
+          value={serviceResources.length}
+          style={{ background: 'linear-gradient(135deg,#4285F4,#0F9D58)', color: '#fff' }}
+        />
+      </span>
+      <span className="p-input-icon-left">
+        <i className="pi pi-search" />
+        <InputText
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          placeholder="Search resources…"
+          style={{ borderRadius: '20px' }}
+        />
+      </span>
+    </div>
+  );
+
+  const resourceTablePanel = (
+    <div className="flex flex-column gap-3" style={{ flex: 1, minWidth: 0 }}>
+      {loadingResources ? (
+        <div className="flex justify-content-center align-items-center flex-column gap-2" style={{ minHeight: '300px' }}>
+          <ProgressSpinner style={{ width: '36px', height: '36px' }} strokeWidth="4" />
+          <span className="text-sm" style={{ color: '#94a3b8' }}>Loading resources…</span>
         </div>
       ) : (
-        // Search results: flat grid
-        filteredSummary.length === 0 ? (
-          <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
-            <i className="pi pi-search text-4xl" />
-            <span>No services match "<strong>{serviceSearch}</strong>"</span>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '0.75rem' }}>
-            {filteredSummary.map((svc) => renderGcpServiceCard(svc))}
-          </div>
-        )
+        <DataTable
+          value={serviceResources}
+          header={tableHeader}
+          globalFilter={globalFilter}
+          paginator
+          rows={10}
+          rowsPerPageOptions={[10, 25, 50]}
+          sortMode="multiple"
+          removableSort
+          stripedRows
+          dataKey="name"
+          emptyMessage={
+            <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
+              <i className="pi pi-inbox text-4xl" />
+              <span>No resources found for {activeResourceType}.</span>
+            </div>
+          }
+          style={{ borderRadius: '16px', overflow: 'hidden' }}
+        >
+          <Column field="name" header="Name" sortable style={{ minWidth: '160px', fontWeight: 500 }} />
+          <Column field="type" header="Type" body={typeTemplate} sortable style={{ minWidth: '150px' }} />
+          <Column field="region" header="Region / Zone" sortable style={{ minWidth: '120px' }} />
+          <Column field="status" header="Status" body={statusTemplate} sortable style={{ minWidth: '110px' }} />
+          <Column header="Configuration" body={detailsTemplate} style={{ minWidth: '260px' }} />
+          <Column field="tags" header="Labels" body={tagsTemplate} style={{ minWidth: '220px' }} />
+        </DataTable>
       )}
+    </div>
+  );
+
+  // ── Determine which main content panel to show ────────────────────────────
+  let mainContent;
+  if (!activeProduct) {
+    mainContent = overviewPanel;
+  } else if (activeProduct.subItems && !activeResourceType) {
+    mainContent = subCategoryPanel;
+  } else {
+    mainContent = resourceTablePanel;
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+      <Toast ref={toast} />
+      {sidebar}
+      {mainContent}
     </div>
   );
 }
