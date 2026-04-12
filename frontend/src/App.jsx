@@ -2,17 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { PrimeReactProvider } from 'primereact/api';
 import CloudSelector from './components/CloudSelector';
 import CredentialsForm from './components/CredentialsForm';
+import GcpOrgSelect from './components/GcpOrgSelect';
 import GcpProjectSelect from './components/GcpProjectSelect';
 import GcpBillingConfig from './components/GcpBillingConfig';
 import Dashboard from './components/Dashboard';
 import { clearCredentials, getSession } from './api/cloudApi';
 
 export default function App() {
-  // steps: 'cloud-select' | 'credentials' | 'gcp-project-select' | 'gcp-billing-config' | 'dashboard'
+  // steps: 'cloud-select' | 'credentials' | 'gcp-org-select' | 'gcp-project-select' | 'gcp-billing-config' | 'dashboard'
   const [step, setStep] = useState('cloud-select');
   const [provider, setProvider] = useState(null);
   const [isMock, setIsMock] = useState(true);
   const [hasGcpProjects, setHasGcpProjects] = useState(false);
+  // Selected org state (org_id + pre-fetched projects for that org)
+  const [gcpSelectedOrg, setGcpSelectedOrg] = useState('');
+  const [gcpOrgProjects, setGcpOrgProjects] = useState(null);
+  // Where the gcp-org-select step should navigate back to
+  const [gcpOrgBackTo, setGcpOrgBackTo] = useState('cloud-select');
   // Where the gcp-project-select step should navigate back to
   const [gcpProjectBackTo, setGcpProjectBackTo] = useState('cloud-select');
   // Where the gcp-billing-config step should navigate back to
@@ -30,8 +36,17 @@ export default function App() {
       // Remove the query param from the URL without triggering a reload
       window.history.replaceState({}, '', '/');
 
+      if (gcpAuth === 'select_org') {
+        // Organizations found – let user pick an org before choosing a project
+        setProvider('gcp');
+        setIsMock(false);
+        setGcpOrgBackTo('cloud-select');
+        setStep('gcp-org-select');
+        return;
+      }
+
       if (gcpAuth === 'select_project') {
-        // Multiple projects – let user pick before going to billing config
+        // No organisations but projects exist – go straight to project selection
         setProvider('gcp');
         setIsMock(false);
         setGcpProjectBackTo('cloud-select');
@@ -44,7 +59,11 @@ export default function App() {
     // Restore session state on page refresh (or after OAuth success redirect)
     getSession()
       .then((res) => {
-        const { active, provider: p, mock, project_id, has_gcp_projects, bigquery_dataset, bigquery_table } = res.data;
+        const {
+          active, provider: p, mock, project_id,
+          has_gcp_projects, has_gcp_organizations,
+          bigquery_dataset, bigquery_table,
+        } = res.data;
         if (!active) return;
         setProvider(p);
         setIsMock(mock ?? false);
@@ -52,8 +71,14 @@ export default function App() {
           setHasGcpProjects(has_gcp_projects ?? false);
           setGcpBillingDataset(bigquery_dataset || '');
           setGcpBillingTable(bigquery_table || '');
-          if (!project_id && has_gcp_projects) {
-            // OAuth completed but no project selected yet
+          if (!mock && !project_id) {
+            // Always require project selection for real (non-mock) GCP sessions,
+            // regardless of whether projects were auto-discovered at login time.
+            if (has_gcp_organizations) {
+              setGcpOrgBackTo('cloud-select');
+              setStep('gcp-org-select');
+              return;
+            }
             setGcpProjectBackTo('cloud-select');
             setStep('gcp-project-select');
             return;
@@ -73,6 +98,22 @@ export default function App() {
     setProvider(p);
     setIsMock(mock);
     setStep('dashboard');
+  };
+
+  // User picked an organization → go to project selection for that org
+  const handleGcpOrgSuccess = (orgId, orgProjects) => {
+    setGcpSelectedOrg(orgId);
+    setGcpOrgProjects(orgProjects);
+    setGcpProjectBackTo('gcp-org-select');
+    setStep('gcp-project-select');
+  };
+
+  // User skipped org selection → show all projects
+  const handleGcpOrgSkip = () => {
+    setGcpSelectedOrg('');
+    setGcpOrgProjects(null);
+    setGcpProjectBackTo('gcp-org-select');
+    setStep('gcp-project-select');
   };
 
   const handleChangeProject = () => {
@@ -103,6 +144,9 @@ export default function App() {
     setProvider(null);
     setIsMock(true);
     setHasGcpProjects(false);
+    setGcpSelectedOrg('');
+    setGcpOrgProjects(null);
+    setGcpOrgBackTo('cloud-select');
     setGcpProjectBackTo('cloud-select');
     setGcpBillingDataset('');
     setGcpBillingTable('');
@@ -121,8 +165,17 @@ export default function App() {
           onBack={() => setStep('cloud-select')}
         />
       )}
+      {step === 'gcp-org-select' && (
+        <GcpOrgSelect
+          onSuccess={handleGcpOrgSuccess}
+          onSkip={handleGcpOrgSkip}
+          onBack={() => setStep(gcpOrgBackTo)}
+        />
+      )}
       {step === 'gcp-project-select' && (
         <GcpProjectSelect
+          orgId={gcpSelectedOrg}
+          orgProjects={gcpOrgProjects}
           onSuccess={handleGcpProjectSuccess}
           onBack={() => setStep(gcpProjectBackTo)}
         />

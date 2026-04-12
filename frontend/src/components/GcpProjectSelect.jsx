@@ -1,30 +1,52 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
+import { InputText } from 'primereact/inputtext';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Message } from 'primereact/message';
 import { getGcpProjects, selectGcpProject } from '../api/cloudApi';
 
-export default function GcpProjectSelect({ onSuccess, onBack }) {
+export default function GcpProjectSelect({ orgId = '', orgProjects = null, onSuccess, onBack }) {
   const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!orgProjects);
   const [selected, setSelected] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // Manual entry fallback when auto-discovery returns nothing
+  const [manualProjectId, setManualProjectId] = useState('');
 
-  useEffect(() => {
-    getGcpProjects()
+  const fetchProjects = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    getGcpProjects(orgId)
       .then((res) => setProjects(res.data.projects || []))
       .catch(() => setError('Failed to load your GCP projects.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [orgId]);
+
+  useEffect(() => {
+    // If the parent already resolved projects for this org, use them directly.
+    if (orgProjects) {
+      setProjects(orgProjects);
+      setLoading(false);
+      return;
+    }
+    fetchProjects();
+  }, [orgProjects, fetchProjects]);
+
+  const handleProjectChange = (e) => {
+    setSelected(e.value);
+    setManualProjectId('');
+  };
 
   const handleContinue = async () => {
-    if (!selected) return;
+    const projectId = selected ? selected.project_id : manualProjectId.trim();
+    if (!projectId) return;
     setSubmitting(true);
+    setError(null);
     try {
-      await selectGcpProject(selected.project_id);
+      await selectGcpProject(projectId);
       onSuccess('gcp', false);
     } catch {
       setError('Failed to select project. Please try again.');
@@ -36,6 +58,8 @@ export default function GcpProjectSelect({ onSuccess, onBack }) {
     label: `${p.name} (${p.project_id})`,
     value: p,
   }));
+
+  const canContinue = selected || manualProjectId.trim().length > 0;
 
   return (
     <div
@@ -52,7 +76,7 @@ export default function GcpProjectSelect({ onSuccess, onBack }) {
           </div>
           <h2 className="text-2xl font-bold m-0">Select a GCP Project</h2>
           <p className="text-500 mt-1 mb-0">
-            Your account has access to multiple projects. Choose one to continue.
+            Choose the project you want to manage.
           </p>
         </div>
 
@@ -62,13 +86,7 @@ export default function GcpProjectSelect({ onSuccess, onBack }) {
           <div className="flex justify-content-center py-4">
             <ProgressSpinner style={{ width: '40px', height: '40px' }} />
           </div>
-        ) : projects.length === 0 ? (
-          <Message
-            severity="warn"
-            text="No accessible GCP projects found for your account."
-            className="w-full mb-3"
-          />
-        ) : (
+        ) : projects.length > 0 ? (
           <div className="flex flex-column gap-3">
             <label className="font-semibold text-sm" htmlFor="gcp-project-dropdown">
               GCP Project
@@ -77,26 +95,57 @@ export default function GcpProjectSelect({ onSuccess, onBack }) {
               id="gcp-project-dropdown"
               value={selected}
               options={projectOptions}
-              onChange={(e) => setSelected(e.value)}
+              onChange={handleProjectChange}
               placeholder="Select a project..."
               className="w-full"
               disabled={submitting}
               filter
               filterPlaceholder="Search projects..."
             />
-            <Button
-              label="Continue"
-              icon="pi pi-arrow-right"
-              iconPos="right"
+          </div>
+        ) : (
+          <div className="flex flex-column gap-3">
+            <Message
+              severity="warn"
+              text="No projects were auto-discovered. Enter your Project ID manually or retry."
               className="w-full"
-              disabled={!selected || submitting}
-              loading={submitting}
-              onClick={handleContinue}
             />
+            <Button
+              label="Retry"
+              icon="pi pi-refresh"
+              className="p-button-outlined w-full"
+              onClick={fetchProjects}
+              disabled={submitting}
+            />
+            <div className="field">
+              <label className="block font-semibold mb-1 text-sm" htmlFor="manual-project-id">
+                Project ID
+              </label>
+              <InputText
+                id="manual-project-id"
+                value={manualProjectId}
+                onChange={(e) => setManualProjectId(e.target.value)}
+                placeholder="my-gcp-project-id"
+                className="w-full"
+                disabled={submitting}
+              />
+              <small className="text-400">
+                Find it in the GCP Console under Project Info.
+              </small>
+            </div>
           </div>
         )}
 
-        <div className="mt-3">
+        <div className="flex flex-column gap-2 mt-4">
+          <Button
+            label="Continue"
+            icon="pi pi-arrow-right"
+            iconPos="right"
+            className="w-full"
+            disabled={!canContinue || submitting}
+            loading={submitting}
+            onClick={handleContinue}
+          />
           <Button
             label="Back"
             icon="pi pi-arrow-left"
