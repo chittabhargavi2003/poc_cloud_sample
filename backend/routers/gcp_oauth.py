@@ -353,6 +353,10 @@ def list_projects(request: Request, org_id: str = Query(default="")):
     If *org_id* is provided, only projects belonging to that organization are
     returned.  When the session already contains org-filtered projects (set by
     POST /select-org) they are returned directly to avoid redundant API calls.
+
+    When no projects are cached in the session (because auto-discovery failed
+    at OAuth callback time), a live fetch is attempted using the stored OAuth
+    credentials so the user always gets a fresh list.
     """
     session: dict = request.app.state.session
 
@@ -360,9 +364,10 @@ def list_projects(request: Request, org_id: str = Query(default="")):
     if org_id and session.get("gcp_selected_org") == org_id:
         return {"projects": session.get("gcp_org_projects", [])}
 
+    creds_dict = session.get("credentials", {})
+
     if org_id:
         # Fetch projects for this org on demand
-        creds_dict = session.get("credentials", {})
         try:
             gcp_creds = _build_session_creds(creds_dict)
             projects = _list_user_projects(gcp_creds, org_id=org_id)
@@ -370,7 +375,25 @@ def list_projects(request: Request, org_id: str = Query(default="")):
             projects = session.get("gcp_projects", [])
         return {"projects": projects}
 
-    return {"projects": session.get("gcp_projects", [])}
+    # No org filter – return cached projects.
+    # If the cache is empty (discovery failed at OAuth time) and we have valid
+    # OAuth credentials, attempt a live re-fetch so the user sees their projects.
+    cached = session.get("gcp_projects", [])
+    if not cached and creds_dict.get("auth_type") == "oauth":
+        try:
+            gcp_creds = _build_session_creds(creds_dict)
+            live_projects = _list_user_projects(gcp_creds)
+            if live_projects:
+                # Cache the result so subsequent calls don't re-fetch
+                request.app.state.session = {
+                    **session,
+                    "gcp_projects": live_projects,
+                }
+                return {"projects": live_projects}
+        except Exception:
+            pass
+
+    return {"projects": cached}
 
 
 @router.post("/select-project")

@@ -71,17 +71,17 @@ export default function App() {
           setHasGcpProjects(has_gcp_projects ?? false);
           setGcpBillingDataset(bigquery_dataset || '');
           setGcpBillingTable(bigquery_table || '');
-          if (!project_id) {
+          if (!mock && !project_id) {
+            // Always require project selection for real (non-mock) GCP sessions,
+            // regardless of whether projects were auto-discovered at login time.
             if (has_gcp_organizations) {
               setGcpOrgBackTo('cloud-select');
               setStep('gcp-org-select');
               return;
             }
-            if (has_gcp_projects) {
-              setGcpProjectBackTo('cloud-select');
-              setStep('gcp-project-select');
-              return;
-            }
+            setGcpProjectBackTo('cloud-select');
+            setStep('gcp-project-select');
+            return;
           }
         }
         setStep('dashboard');
