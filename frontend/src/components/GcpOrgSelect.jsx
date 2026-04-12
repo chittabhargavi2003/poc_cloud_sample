@@ -4,43 +4,39 @@ import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Message } from 'primereact/message';
-import { getGcpProjects, selectGcpProject } from '../api/cloudApi';
+import { getGcpOrganizations, selectGcpOrg } from '../api/cloudApi';
 
-export default function GcpProjectSelect({ orgId = '', orgProjects = null, onSuccess, onBack }) {
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(!orgProjects);
+export default function GcpOrgSelect({ onSuccess, onSkip, onBack }) {
+  const [organizations, setOrganizations] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // If the parent already resolved projects for this org, use them directly.
-    if (orgProjects) {
-      setProjects(orgProjects);
-      setLoading(false);
-      return;
-    }
-    getGcpProjects(orgId)
-      .then((res) => setProjects(res.data.projects || []))
-      .catch(() => setError('Failed to load your GCP projects.'))
+    getGcpOrganizations()
+      .then((res) => setOrganizations(res.data.organizations || []))
+      .catch(() => setError('Failed to load your GCP organizations.'))
       .finally(() => setLoading(false));
-  }, [orgId, orgProjects]);
+  }, []);
 
   const handleContinue = async () => {
     if (!selected) return;
     setSubmitting(true);
+    setError(null);
     try {
-      await selectGcpProject(selected.project_id);
-      onSuccess('gcp', false);
+      const res = await selectGcpOrg(selected.org_id);
+      const projects = res.data.projects || [];
+      onSuccess(selected.org_id, projects);
     } catch {
-      setError('Failed to select project. Please try again.');
+      setError('Failed to select organization. Please try again.');
       setSubmitting(false);
     }
   };
 
-  const projectOptions = projects.map((p) => ({
-    label: `${p.name} (${p.project_id})`,
-    value: p,
+  const orgOptions = organizations.map((o) => ({
+    label: o.name,
+    value: o,
   }));
 
   return (
@@ -54,11 +50,11 @@ export default function GcpProjectSelect({ orgId = '', orgProjects = null, onSuc
             className="inline-flex align-items-center justify-content-center border-circle mb-3"
             style={{ width: '60px', height: '60px', background: '#4285F4' }}
           >
-            <i className="pi pi-list" style={{ color: '#fff', fontSize: '1.4rem' }} />
+            <i className="pi pi-building" style={{ color: '#fff', fontSize: '1.4rem' }} />
           </div>
-          <h2 className="text-2xl font-bold m-0">Select a GCP Project</h2>
+          <h2 className="text-2xl font-bold m-0">Select an Organization</h2>
           <p className="text-500 mt-1 mb-0">
-            Your account has access to multiple projects. Choose one to continue.
+            Choose the GCP organization to browse its projects.
           </p>
         </div>
 
@@ -68,27 +64,36 @@ export default function GcpProjectSelect({ orgId = '', orgProjects = null, onSuc
           <div className="flex justify-content-center py-4">
             <ProgressSpinner style={{ width: '40px', height: '40px' }} />
           </div>
-        ) : projects.length === 0 ? (
-          <Message
-            severity="warn"
-            text="No accessible GCP projects found for your account."
-            className="w-full mb-3"
-          />
+        ) : organizations.length === 0 ? (
+          <div className="flex flex-column gap-3">
+            <Message
+              severity="info"
+              text="No organizations found. You can still select a project directly."
+              className="w-full"
+            />
+            <Button
+              label="Select a Project"
+              icon="pi pi-arrow-right"
+              iconPos="right"
+              className="w-full"
+              onClick={onSkip}
+            />
+          </div>
         ) : (
           <div className="flex flex-column gap-3">
-            <label className="font-semibold text-sm" htmlFor="gcp-project-dropdown">
-              GCP Project
+            <label className="font-semibold text-sm" htmlFor="gcp-org-dropdown">
+              GCP Organization
             </label>
             <Dropdown
-              id="gcp-project-dropdown"
+              id="gcp-org-dropdown"
               value={selected}
-              options={projectOptions}
+              options={orgOptions}
               onChange={(e) => setSelected(e.value)}
-              placeholder="Select a project..."
+              placeholder="Select an organization..."
               className="w-full"
               disabled={submitting}
               filter
-              filterPlaceholder="Search projects..."
+              filterPlaceholder="Search organizations..."
             />
             <Button
               label="Continue"
@@ -98,6 +103,13 @@ export default function GcpProjectSelect({ orgId = '', orgProjects = null, onSuc
               disabled={!selected || submitting}
               loading={submitting}
               onClick={handleContinue}
+            />
+            <Button
+              label="Skip – show all projects"
+              icon="pi pi-list"
+              className="p-button-outlined w-full"
+              onClick={onSkip}
+              disabled={submitting}
             />
           </div>
         )}

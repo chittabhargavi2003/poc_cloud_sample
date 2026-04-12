@@ -1,26 +1,31 @@
 """GCP OAuth 2.0 login router.
 
 Endpoints:
-  POST /api/gcp/oauth/init      – uses GCP_CLIENT_ID / GCP_CLIENT_SECRET from
-                                   the server .env file (optionally overridden in
-                                   the request body); stores pending credentials
-                                   in session and returns the Google OAuth URL.
-  GET  /api/gcp/oauth/callback  – handles the redirect from Google, exchanges
-                                   the auth code for tokens, auto-discovers
-                                   accessible projects, stores credentials in
-                                   session, and redirects to the frontend.
-  GET  /api/gcp/projects        – returns the list of accessible GCP projects
-                                   discovered after OAuth (if more than one).
-  POST /api/gcp/select-project  – sets the chosen project ID in the session.
-  GET  /api/gcp/iam             – returns the authenticated user's IAM roles and
-                                   the full project IAM policy.
+  POST /api/gcp/oauth/init        – uses GCP_CLIENT_ID / GCP_CLIENT_SECRET from
+                                     the server .env file (optionally overridden in
+                                     the request body); stores pending credentials
+                                     in session and returns the Google OAuth URL.
+  GET  /api/gcp/oauth/callback    – handles the redirect from Google, exchanges
+                                     the auth code for tokens, auto-discovers
+                                     accessible organizations and projects, stores
+                                     credentials in session, and redirects to the
+                                     frontend.
+  GET  /api/gcp/organizations     – returns the list of GCP organizations
+                                     accessible to the authenticated user.
+  POST /api/gcp/select-org        – stores the chosen organization ID in session
+                                     and returns projects belonging to that org.
+  GET  /api/gcp/projects          – returns accessible GCP projects, optionally
+                                     filtered by organization ID.
+  POST /api/gcp/select-project    – sets the chosen project ID in the session.
+  GET  /api/gcp/iam               – returns the authenticated user's IAM roles and
+                                     the full project IAM policy.
 """
 from __future__ import annotations
 
 import os
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
@@ -44,6 +49,7 @@ _BACKEND_BASE = os.environ.get("GCP_OAUTH_BACKEND_BASE", "http://localhost:8000"
 _FRONTEND_BASE = os.environ.get("GCP_OAUTH_FRONTEND_BASE", "http://localhost:3000")
 _REDIRECT_URI = f"{_BACKEND_BASE}/api/gcp/oauth/callback"
 _FRONTEND_SUCCESS = f"{_FRONTEND_BASE}/?gcp_auth=success"
+_FRONTEND_SELECT_ORG = f"{_FRONTEND_BASE}/?gcp_auth=select_org"
 _FRONTEND_SELECT = f"{_FRONTEND_BASE}/?gcp_auth=select_project"
 _FRONTEND_ERROR = f"{_FRONTEND_BASE}/?gcp_auth=error"
 
@@ -60,15 +66,47 @@ class GcpBillingConfigRequest(BaseModel):
     bigquery_table: str = ""
 
 
+class GcpSelectOrgRequest(BaseModel):
+    org_id: str
+
+
 class GcpSelectProjectRequest(BaseModel):
     project_id: str
 
 
-def _list_user_projects(gcp_creds) -> list[dict]:
+def _list_user_organizations(gcp_creds) -> list[dict]:
+    """Return GCP organizations accessible to the authenticated user.
+
+    Uses the Cloud Resource Manager v3 organizations.search() API.
+    Returns an empty list if the user has no organization access.
+    """
+    try:
+        from googleapiclient import discovery  # type: ignore
+        crm = discovery.build(
+            "cloudresourcemanager", "v3", credentials=gcp_creds, cache_discovery=False
+        )
+        result = crm.organizations().search().execute()
+        orgs = []
+        for org in result.get("organizations", []):
+            if org.get("state") != "ACTIVE":
+                continue
+            raw_name = org.get("name", "")  # e.g. "organizations/123456789"
+            org_id = raw_name.split("/")[-1] if "/" in raw_name else raw_name
+            orgs.append({
+                "org_id": org_id,
+                "name": org.get("displayName", org_id),
+            })
+        return orgs
+    except Exception:
+        return []
+
+
+def _list_user_projects(gcp_creds, org_id: str = "") -> list[dict]:
     """Return all active GCP projects accessible with the given credentials.
 
-    Tries the Cloud Resource Manager v1 API first; falls back to v3 (which uses
-    a different endpoint) if v1 fails, so both API versions are covered.
+    If *org_id* is provided, only projects whose parent is that organization
+    are returned.  Tries the Cloud Resource Manager v1 API first; falls back
+    to v3 (which uses a different endpoint) if v1 fails.
     """
     def _from_v1():
         from googleapiclient import discovery  # type: ignore
@@ -76,18 +114,29 @@ def _list_user_projects(gcp_creds) -> list[dict]:
             "cloudresourcemanager", "v1", credentials=gcp_creds, cache_discovery=False
         )
         result = crm.projects().list().execute()
-        return [
-            {"project_id": p["projectId"], "name": p.get("name", p["projectId"])}
+        projects = [
+            {"project_id": p["projectId"], "name": p.get("name", p["projectId"]), "parent": p.get("parent", {})}
             for p in result.get("projects", [])
             if p.get("lifecycleState") == "ACTIVE"
         ]
+        if org_id:
+            projects = [
+                p for p in projects
+                if str(p.get("parent", {}).get("id", "")) == str(org_id)
+            ]
+        # Normalize: remove the raw parent dict before returning
+        return [{"project_id": p["project_id"], "name": p["name"]} for p in projects]
 
     def _from_v3():
         from googleapiclient import discovery  # type: ignore
         crm = discovery.build(
             "cloudresourcemanager", "v3", credentials=gcp_creds, cache_discovery=False
         )
-        result = crm.projects().search().execute()
+        query = f"parent:organizations/{org_id}" if org_id else ""
+        kwargs: dict = {}
+        if query:
+            kwargs["query"] = query
+        result = crm.projects().search(**kwargs).execute()
         return [
             {"project_id": p["projectId"], "name": p.get("displayName", p["projectId"])}
             for p in result.get("projects", [])
@@ -197,7 +246,8 @@ def oauth_callback(
         logging.getLogger(__name__).error("GCP OAuth token exchange failed: %s", exc)
         return RedirectResponse(f"{_FRONTEND_ERROR}&reason=token_exchange_failed")
 
-    # Auto-discover GCP projects accessible to this user
+    # Auto-discover GCP organizations and projects accessible to this user
+    organizations = _list_user_organizations(gcp_creds)
     projects = _list_user_projects(gcp_creds)
 
     base_credentials: dict = {
@@ -214,8 +264,19 @@ def oauth_callback(
         "gcp_projects": projects,
     }
 
-    if len(projects) >= 1:
-        # Always let the user pick their project from the dropdown
+    if organizations:
+        # Ask the user to pick an organization first, then a project
+        request.app.state.session = {
+            "provider": "gcp",
+            "credentials": base_credentials,
+            "gcp_organizations": organizations,
+            "gcp_projects": projects,
+            "mock": False,
+        }
+        return RedirectResponse(_FRONTEND_SELECT_ORG)
+
+    if projects:
+        # No organisations but projects exist – go straight to project selection
         request.app.state.session = {
             "provider": "gcp",
             "credentials": base_credentials,
@@ -233,10 +294,82 @@ def oauth_callback(
     return RedirectResponse(_FRONTEND_SUCCESS)
 
 
-@router.get("/projects")
-def list_projects(request: Request):
-    """Return the GCP projects discovered during OAuth, available for user selection."""
+@router.get("/organizations")
+def list_organizations(request: Request):
+    """Return the GCP organizations discovered during OAuth."""
     session: dict = request.app.state.session
+    return {"organizations": session.get("gcp_organizations", [])}
+
+
+@router.post("/select-org")
+def select_org(payload: GcpSelectOrgRequest, request: Request):
+    """Store the chosen organization and return its projects."""
+    session: dict = request.app.state.session
+    if session.get("provider") != "gcp":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="No active GCP session.")
+
+    # Rebuild credentials object with the selected org
+    creds = dict(session.get("credentials", {}))
+
+    # Re-build GCP credentials to fetch projects filtered by this org
+    try:
+        gcp_creds = _build_session_creds(creds)
+        projects = _list_user_projects(gcp_creds, org_id=payload.org_id)
+    except Exception:
+        projects = []
+
+    # Fall back to the full project list if org-filtered fetch returns nothing
+    if not projects:
+        all_projects: list[dict] = session.get("gcp_projects", [])
+        projects = all_projects
+
+    request.app.state.session = {
+        **session,
+        "credentials": creds,
+        "gcp_selected_org": payload.org_id,
+        "gcp_org_projects": projects,
+    }
+    return {"org_id": payload.org_id, "projects": projects}
+
+
+def _build_session_creds(creds: dict):
+    """Reconstruct google.oauth2 credentials from the session dict."""
+    import google.oauth2.credentials as _gc  # type: ignore
+    return _gc.Credentials(
+        token=creds.get("token"),
+        refresh_token=creds.get("refresh_token"),
+        token_uri=creds.get("token_uri", "https://oauth2.googleapis.com/token"),
+        client_id=creds.get("client_id"),
+        client_secret=creds.get("client_secret"),
+        scopes=creds.get("scopes"),
+    )
+
+
+@router.get("/projects")
+def list_projects(request: Request, org_id: str = Query(default="")):
+    """Return GCP projects for the authenticated user.
+
+    If *org_id* is provided, only projects belonging to that organization are
+    returned.  When the session already contains org-filtered projects (set by
+    POST /select-org) they are returned directly to avoid redundant API calls.
+    """
+    session: dict = request.app.state.session
+
+    # If an org was already selected and its projects are cached, serve them.
+    if org_id and session.get("gcp_selected_org") == org_id:
+        return {"projects": session.get("gcp_org_projects", [])}
+
+    if org_id:
+        # Fetch projects for this org on demand
+        creds_dict = session.get("credentials", {})
+        try:
+            gcp_creds = _build_session_creds(creds_dict)
+            projects = _list_user_projects(gcp_creds, org_id=org_id)
+        except Exception:
+            projects = session.get("gcp_projects", [])
+        return {"projects": projects}
+
     return {"projects": session.get("gcp_projects", [])}
 
 

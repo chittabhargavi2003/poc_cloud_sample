@@ -60,7 +60,13 @@ export const gcpOAuthInit = (clientId, clientSecret, bigqueryDataset = '', bigqu
     bigquery_table: bigqueryTable,
   });
 
-export const getGcpProjects = () => api.get('/api/gcp/projects');
+export const getGcpOrganizations = () => api.get('/api/gcp/organizations');
+
+export const selectGcpOrg = (orgId) =>
+  api.post('/api/gcp/select-org', { org_id: orgId });
+
+export const getGcpProjects = (orgId = '') =>
+  api.get('/api/gcp/projects', { params: orgId ? { org_id: orgId } : {} });
 
 export const selectGcpProject = (projectId) =>
   api.post('/api/gcp/select-project', { project_id: projectId });
