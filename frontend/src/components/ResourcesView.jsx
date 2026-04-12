@@ -1372,7 +1372,7 @@ function GcpResourcesView() {
   // ── Sidebar ────────────────────────────────────────────────────────────────
   const sidebar = (
     <div style={{
-      width: '220px',
+      width: '280px',
       flexShrink: 0,
       background: '#1e293b',
       borderRadius: '12px',
@@ -1382,16 +1382,16 @@ function GcpResourcesView() {
       maxHeight: 'calc(100vh - 160px)',
     }}>
       {/* Header + search */}
-      <div style={{ padding: '12px 14px', borderBottom: '1px solid #334155', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-          <i className="pi pi-cloud" style={{ color: '#4285F4', fontSize: '0.9rem' }} />
-          <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '0.85rem' }}>GCP Console</span>
+      <div style={{ padding: '16px 18px', borderBottom: '1px solid #334155', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+          <i className="pi pi-cloud" style={{ color: '#4285F4', fontSize: '1.1rem' }} />
+          <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '1rem' }}>GCP Console</span>
         </div>
         <div style={{ position: 'relative' }}>
           <i className="pi pi-search" style={{
-            position: 'absolute', left: '8px', top: '50%',
+            position: 'absolute', left: '10px', top: '50%',
             transform: 'translateY(-50%)', color: '#64748b',
-            fontSize: '0.75rem', pointerEvents: 'none',
+            fontSize: '0.85rem', pointerEvents: 'none',
           }} />
           <input
             type="text"
@@ -1400,11 +1400,11 @@ function GcpResourcesView() {
             placeholder="Search products…"
             style={{
               width: '100%', boxSizing: 'border-box',
-              paddingLeft: '28px', paddingRight: '8px',
-              paddingTop: '5px', paddingBottom: '5px',
+              paddingLeft: '32px', paddingRight: '10px',
+              paddingTop: '7px', paddingBottom: '7px',
               background: '#0f172a', border: '1px solid #334155',
-              borderRadius: '6px', color: '#e2e8f0',
-              fontSize: '0.78rem', outline: 'none',
+              borderRadius: '8px', color: '#e2e8f0',
+              fontSize: '0.88rem', outline: 'none',
             }}
           />
         </div>
@@ -1423,7 +1423,7 @@ function GcpResourcesView() {
               }}
             >
               <span style={{
-                color: '#475569', fontSize: '0.67rem', fontWeight: 700,
+                color: '#475569', fontSize: '0.75rem', fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: '0.07em',
               }}>
                 {section.section}
@@ -1447,7 +1447,7 @@ function GcpResourcesView() {
                     onClick={() => handleProductClick(product)}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '7px 10px 7px 16px', cursor: 'pointer',
+                      padding: '9px 12px 9px 18px', cursor: 'pointer',
                       background: isActive ? `${section.color}18` : 'transparent',
                       borderLeft: isActive ? `3px solid ${section.color}` : '3px solid transparent',
                       transition: 'background 0.15s',
@@ -1458,11 +1458,11 @@ function GcpResourcesView() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, flex: 1 }}>
                       <i
                         className={`pi ${product.icon}`}
-                        style={{ color: isActive ? section.color : '#64748b', fontSize: '0.8rem', flexShrink: 0 }}
+                        style={{ color: isActive ? section.color : '#64748b', fontSize: '0.95rem', flexShrink: 0 }}
                       />
                       <span style={{
                         color: isActive ? '#f1f5f9' : '#94a3b8',
-                        fontSize: '0.82rem', fontWeight: isActive ? 600 : 400,
+                        fontSize: '0.92rem', fontWeight: isActive ? 600 : 400,
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
                         {product.label}
@@ -1472,8 +1472,8 @@ function GcpResourcesView() {
                       {productCount > 0 && (
                         <span style={{
                           background: `${section.color}22`, color: section.color,
-                          borderRadius: '10px', padding: '1px 6px',
-                          fontSize: '0.65rem', fontWeight: 600,
+                          borderRadius: '10px', padding: '2px 8px',
+                          fontSize: '0.75rem', fontWeight: 600,
                         }}>
                           {productCount}
                         </span>
@@ -1493,7 +1493,7 @@ function GcpResourcesView() {
                         onClick={(e) => handleSubItemClick(e, sub.resourceType)}
                         style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          padding: '5px 10px 5px 36px', cursor: 'pointer',
+                          padding: '7px 12px 7px 42px', cursor: 'pointer',
                           background: isSubActive ? `${section.color}22` : 'transparent',
                           transition: 'background 0.15s',
                         }}
@@ -1502,15 +1502,15 @@ function GcpResourcesView() {
                       >
                         <span style={{
                           color: isSubActive ? '#f1f5f9' : '#64748b',
-                          fontSize: '0.78rem', fontWeight: isSubActive ? 600 : 400,
+                          fontSize: '0.88rem', fontWeight: isSubActive ? 600 : 400,
                         }}>
                           {sub.label}
                         </span>
                         {(countByType[sub.resourceType] || 0) > 0 && (
                           <span style={{
                             background: `${section.color}22`, color: section.color,
-                            borderRadius: '10px', padding: '1px 5px',
-                            fontSize: '0.62rem', fontWeight: 600, flexShrink: 0,
+                            borderRadius: '10px', padding: '2px 7px',
+                            fontSize: '0.73rem', fontWeight: 600, flexShrink: 0,
                           }}>
                             {countByType[sub.resourceType]}
                           </span>
