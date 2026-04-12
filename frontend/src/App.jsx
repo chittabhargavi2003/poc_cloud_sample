@@ -44,7 +44,7 @@ export default function App() {
     // Restore session state on page refresh (or after OAuth success redirect)
     getSession()
       .then((res) => {
-        const { active, provider: p, mock, project_id, has_gcp_projects, bigquery_dataset, bigquery_table } = res.data;
+        const { active, provider: p, mock, project_id, has_gcp_projects, needs_project_select, bigquery_dataset, bigquery_table } = res.data;
         if (!active) return;
         setProvider(p);
         setIsMock(mock ?? false);
@@ -52,7 +52,7 @@ export default function App() {
           setHasGcpProjects(has_gcp_projects ?? false);
           setGcpBillingDataset(bigquery_dataset || '');
           setGcpBillingTable(bigquery_table || '');
-          if (!project_id && has_gcp_projects) {
+          if (needs_project_select) {
             // OAuth completed but no project selected yet
             setGcpProjectBackTo('cloud-select');
             setStep('gcp-project-select');

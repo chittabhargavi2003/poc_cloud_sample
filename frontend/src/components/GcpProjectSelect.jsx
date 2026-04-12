@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
+import { InputText } from 'primereact/inputtext';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Message } from 'primereact/message';
 import { getGcpProjects, selectGcpProject } from '../api/cloudApi';
@@ -10,21 +11,29 @@ export default function GcpProjectSelect({ onSuccess, onBack }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [manualProjectId, setManualProjectId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [discoveryError, setDiscoveryError] = useState(null);
 
   useEffect(() => {
     getGcpProjects()
-      .then((res) => setProjects(res.data.projects || []))
+      .then((res) => {
+        setProjects(res.data.projects || []);
+        if (res.data.discovery_error) {
+          setDiscoveryError(res.data.discovery_error);
+        }
+      })
       .catch(() => setError('Failed to load your GCP projects.'))
       .finally(() => setLoading(false));
   }, []);
 
   const handleContinue = async () => {
-    if (!selected) return;
+    const projectId = projects.length > 0 ? selected?.project_id : manualProjectId.trim();
+    if (!projectId) return;
     setSubmitting(true);
     try {
-      await selectGcpProject(selected.project_id);
+      await selectGcpProject(projectId);
       onSuccess('gcp', false);
     } catch {
       setError('Failed to select project. Please try again.');
@@ -36,6 +45,8 @@ export default function GcpProjectSelect({ onSuccess, onBack }) {
     label: `${p.name} (${p.project_id})`,
     value: p,
   }));
+
+  const canContinue = projects.length > 0 ? !!selected : manualProjectId.trim().length > 0;
 
   return (
     <div
@@ -52,7 +63,9 @@ export default function GcpProjectSelect({ onSuccess, onBack }) {
           </div>
           <h2 className="text-2xl font-bold m-0">Select a GCP Project</h2>
           <p className="text-500 mt-1 mb-0">
-            Your account has access to multiple projects. Choose one to continue.
+            {projects.length > 0
+              ? 'Your account has access to multiple projects. Choose one to continue.'
+              : 'Enter your GCP Project ID to continue.'}
           </p>
         </div>
 
@@ -62,13 +75,7 @@ export default function GcpProjectSelect({ onSuccess, onBack }) {
           <div className="flex justify-content-center py-4">
             <ProgressSpinner style={{ width: '40px', height: '40px' }} />
           </div>
-        ) : projects.length === 0 ? (
-          <Message
-            severity="warn"
-            text="No accessible GCP projects found for your account."
-            className="w-full mb-3"
-          />
-        ) : (
+        ) : projects.length > 0 ? (
           <div className="flex flex-column gap-3">
             <label className="font-semibold text-sm" htmlFor="gcp-project-dropdown">
               GCP Project
@@ -89,7 +96,49 @@ export default function GcpProjectSelect({ onSuccess, onBack }) {
               icon="pi pi-arrow-right"
               iconPos="right"
               className="w-full"
-              disabled={!selected || submitting}
+              disabled={!canContinue || submitting}
+              loading={submitting}
+              onClick={handleContinue}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-column gap-3">
+            {discoveryError && (
+              <Message
+                severity="warn"
+                text={`Could not auto-discover projects: ${discoveryError}. You can enter your Project ID manually below.`}
+                className="w-full mb-1"
+              />
+            )}
+            <label className="font-semibold text-sm" htmlFor="gcp-project-manual">
+              GCP Project ID
+            </label>
+            <InputText
+              id="gcp-project-manual"
+              value={manualProjectId}
+              onChange={(e) => setManualProjectId(e.target.value)}
+              placeholder="e.g. my-project-123"
+              className="w-full"
+              disabled={submitting}
+            />
+            <small className="text-500">
+              Find your Project ID in the{' '}
+              <a
+                href="https://console.cloud.google.com/home/dashboard"
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#60a5fa' }}
+              >
+                GCP Console
+              </a>{' '}
+              dashboard.
+            </small>
+            <Button
+              label="Continue"
+              icon="pi pi-arrow-right"
+              iconPos="right"
+              className="w-full"
+              disabled={!canContinue || submitting}
               loading={submitting}
               onClick={handleContinue}
             />

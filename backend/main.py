@@ -153,6 +153,8 @@ def get_session():
         creds = session.get("credentials", {})
         response["project_id"] = creds.get("project_id", "")
         response["has_gcp_projects"] = bool(session.get("gcp_projects"))
+        # Signal that project selection is still pending (no project chosen yet)
+        response["needs_project_select"] = not bool(creds.get("project_id", ""))
         response["bigquery_dataset"] = creds.get("bigquery_dataset", "")
         response["bigquery_table"] = creds.get("bigquery_table", "")
     return response

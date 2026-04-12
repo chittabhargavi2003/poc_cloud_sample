@@ -64,11 +64,14 @@ class GcpSelectProjectRequest(BaseModel):
     project_id: str
 
 
-def _list_user_projects(gcp_creds) -> list[dict]:
+def _list_user_projects(gcp_creds) -> tuple[list[dict], str]:
     """Return all active GCP projects accessible with the given credentials.
 
     Tries the Cloud Resource Manager v1 API first; falls back to v3 (which uses
     a different endpoint) if v1 fails, so both API versions are covered.
+
+    Returns a tuple of (projects, error_message).  ``error_message`` is empty
+    when at least one project was discovered successfully.
     """
     def _from_v1():
         from googleapiclient import discovery  # type: ignore
@@ -94,14 +97,15 @@ def _list_user_projects(gcp_creds) -> list[dict]:
             if p.get("state") == "ACTIVE"
         ]
 
+    last_error = ""
     for fn in (_from_v1, _from_v3):
         try:
             projects = fn()
             if projects:
-                return projects
-        except Exception:
-            pass
-    return []
+                return projects, ""
+        except Exception as exc:
+            last_error = str(exc).strip()
+    return [], last_error
 
 
 @router.post("/oauth/init")
@@ -198,7 +202,7 @@ def oauth_callback(
         return RedirectResponse(f"{_FRONTEND_ERROR}&reason=token_exchange_failed")
 
     # Auto-discover GCP projects accessible to this user
-    projects = _list_user_projects(gcp_creds)
+    projects, discovery_error = _list_user_projects(gcp_creds)
 
     base_credentials: dict = {
         "auth_type": "oauth",
@@ -214,30 +218,27 @@ def oauth_callback(
         "gcp_projects": projects,
     }
 
-    if len(projects) >= 1:
-        # Always let the user pick their project from the dropdown
-        request.app.state.session = {
-            "provider": "gcp",
-            "credentials": base_credentials,
-            "gcp_projects": projects,
-            "mock": False,
-        }
-        return RedirectResponse(_FRONTEND_SELECT)
-
-    # No projects discovered (permission issue or empty account) – proceed anyway
+    # Always redirect to the project-select screen so the user can pick (or
+    # manually type) a project ID, even when auto-discovery returned nothing.
     request.app.state.session = {
         "provider": "gcp",
         "credentials": base_credentials,
+        "gcp_projects": projects,
+        "gcp_projects_discovery_error": discovery_error,
         "mock": False,
     }
-    return RedirectResponse(_FRONTEND_SUCCESS)
+    return RedirectResponse(_FRONTEND_SELECT)
 
 
 @router.get("/projects")
 def list_projects(request: Request):
     """Return the GCP projects discovered during OAuth, available for user selection."""
     session: dict = request.app.state.session
-    return {"projects": session.get("gcp_projects", [])}
+    response: dict = {"projects": session.get("gcp_projects", [])}
+    discovery_error = session.get("gcp_projects_discovery_error", "")
+    if discovery_error:
+        response["discovery_error"] = discovery_error
+    return response
 
 
 @router.post("/select-project")
