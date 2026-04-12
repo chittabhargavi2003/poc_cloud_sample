@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { InputText } from 'primereact/inputtext';
@@ -1097,22 +1097,260 @@ export default function ResourcesView({ provider }) {
 }
 
 // ---------------------------------------------------------------------------
-// GCP: service cards → resource table drill-down
+// GCP: Google Cloud Console-style product navigation sidebar
+// ---------------------------------------------------------------------------
+
+// GCP product navigation tree — mirrors the Google Cloud Console left nav.
+// Each section groups related products. Products may either map directly to a
+// single resourceType, or have subItems (shown inline in the sidebar when the
+// product is selected) that each map to a resourceType.
+const GCP_PRODUCT_NAV = [
+  // ── Compute ──────────────────────────────────────────────────────────────
+  {
+    section: 'Compute',
+    color: '#4285F4',
+    products: [
+      {
+        id: 'compute-engine',
+        label: 'Compute Engine',
+        icon: 'pi-server',
+        subItems: [
+          { label: 'VM Instances',       resourceType: 'Compute Engine',    description: 'Running and stopped virtual machine instances' },
+          { label: 'Disks',              resourceType: 'Persistent Disk',   description: 'Persistent block storage volumes attached to VMs' },
+          { label: 'Snapshots',          resourceType: 'Disk Snapshot',     description: 'Point-in-time snapshots of persistent disks' },
+          { label: 'Images',             resourceType: 'Compute Image',     description: 'Custom OS images for VM creation' },
+          { label: 'Instance Templates', resourceType: 'Instance Template', description: 'Reusable VM configuration templates' },
+          { label: 'Instance Groups',    resourceType: 'Instance Group',    description: 'Managed and unmanaged instance groups' },
+          { label: 'Autoscalers',        resourceType: 'Autoscaler',        description: 'Automatic scaling policies for instance groups' },
+        ],
+      },
+      { id: 'gke', label: 'Kubernetes Engine', icon: 'pi-sitemap', resourceType: 'GKE' },
+      {
+        id: 'app-engine',
+        label: 'App Engine',
+        icon: 'pi-globe',
+        subItems: [
+          { label: 'Applications', resourceType: 'App Engine',         description: 'App Engine applications in this project' },
+          { label: 'Services',     resourceType: 'App Engine Service', description: 'App Engine services and versions' },
+        ],
+      },
+      { id: 'cloud-run',       label: 'Cloud Run',       icon: 'pi-forward', resourceType: 'Cloud Run' },
+      { id: 'cloud-functions', label: 'Cloud Functions', icon: 'pi-bolt',    resourceType: 'Cloud Functions' },
+    ],
+  },
+
+  // ── Storage ───────────────────────────────────────────────────────────────
+  {
+    section: 'Storage',
+    color: '#0F9D58',
+    products: [
+      { id: 'cloud-storage', label: 'Cloud Storage', icon: 'pi-database', resourceType: 'Cloud Storage' },
+      { id: 'filestore',     label: 'Filestore',     icon: 'pi-folder',   resourceType: 'Filestore' },
+    ],
+  },
+
+  // ── Databases ─────────────────────────────────────────────────────────────
+  {
+    section: 'Databases',
+    color: '#DB4437',
+    products: [
+      { id: 'cloud-sql',     label: 'Cloud SQL',     icon: 'pi-database', resourceType: 'Cloud SQL' },
+      { id: 'cloud-spanner', label: 'Cloud Spanner', icon: 'pi-table',    resourceType: 'Cloud Spanner' },
+      { id: 'firestore-db',  label: 'Firestore',     icon: 'pi-file',     resourceType: 'Firestore' },
+      { id: 'cloud-bigtable',label: 'Cloud Bigtable',icon: 'pi-table',    resourceType: 'Cloud Bigtable' },
+      { id: 'memorystore',   label: 'Memorystore',   icon: 'pi-refresh',  resourceType: 'Cloud Memorystore' },
+      { id: 'alloydb',       label: 'AlloyDB',       icon: 'pi-database', resourceType: 'AlloyDB' },
+    ],
+  },
+
+  // ── Analytics ─────────────────────────────────────────────────────────────
+  {
+    section: 'Analytics',
+    color: '#F4B400',
+    products: [
+      {
+        id: 'bigquery',
+        label: 'BigQuery',
+        icon: 'pi-chart-bar',
+        subItems: [
+          { label: 'Datasets',     resourceType: 'BigQuery',             description: 'BigQuery datasets in this project' },
+          { label: 'Tables',       resourceType: 'BigQuery Table',       description: 'BigQuery tables and views' },
+          { label: 'Reservations', resourceType: 'BigQuery Reservation', description: 'BigQuery capacity reservations' },
+        ],
+      },
+      {
+        id: 'pub-sub',
+        label: 'Pub/Sub',
+        icon: 'pi-send',
+        subItems: [
+          { label: 'Topics',        resourceType: 'Pub/Sub',              description: 'Pub/Sub topics' },
+          { label: 'Subscriptions', resourceType: 'Pub/Sub Subscription', description: 'Pub/Sub push and pull subscriptions' },
+          { label: 'Lite Topics',   resourceType: 'Pub/Sub Lite',         description: 'Pub/Sub Lite low-cost topics' },
+        ],
+      },
+      { id: 'dataflow',    label: 'Dataflow',          icon: 'pi-sort-alt',  resourceType: 'Dataflow' },
+      { id: 'dataproc',    label: 'Dataproc',          icon: 'pi-share-alt', resourceType: 'Dataproc' },
+      { id: 'composer',    label: 'Cloud Composer',    icon: 'pi-cog',       resourceType: 'Cloud Composer' },
+      { id: 'dataform',    label: 'Dataform',          icon: 'pi-file-edit', resourceType: 'Dataform' },
+      { id: 'dataplex',    label: 'Dataplex',          icon: 'pi-sitemap',   resourceType: 'Dataplex' },
+      { id: 'data-fusion', label: 'Cloud Data Fusion', icon: 'pi-sync',      resourceType: 'Cloud Data Fusion' },
+    ],
+  },
+
+  // ── Networking ────────────────────────────────────────────────────────────
+  {
+    section: 'Networking',
+    color: '#8B5CF6',
+    products: [
+      {
+        id: 'vpc',
+        label: 'VPC Network',
+        icon: 'pi-sitemap',
+        subItems: [
+          { label: 'VPC Networks',       resourceType: 'VPC Network',         description: 'Your virtual private cloud networks' },
+          { label: 'Subnets',            resourceType: 'Subnet',              description: 'Subnetworks within your VPCs' },
+          { label: 'Firewall Rules',     resourceType: 'Firewall Rule',       description: 'Ingress and egress firewall rules' },
+          { label: 'Routes',             resourceType: 'Route',               description: 'Custom routing rules for VPC traffic' },
+          { label: 'Cloud Router',       resourceType: 'Cloud Router',        description: 'Dynamic routing for VPC networks' },
+          { label: 'VPN Gateways',       resourceType: 'VPN Gateway',         description: 'Classic and HA VPN gateways' },
+          { label: 'VPN Tunnels',        resourceType: 'VPN Tunnel',          description: 'Encrypted VPN tunnels' },
+          { label: 'VPC Connectors',     resourceType: 'VPC Connector',       description: 'Serverless VPC access connectors' },
+          { label: 'IP Addresses',       resourceType: 'IP Address',          description: 'Reserved external and internal IPs' },
+        ],
+      },
+      {
+        id: 'load-balancing',
+        label: 'Load Balancing',
+        icon: 'pi-arrows-h',
+        subItems: [
+          { label: 'Load Balancers',   resourceType: 'Load Balancer',   description: 'HTTP(S), SSL, and TCP load balancers' },
+          { label: 'Backend Services', resourceType: 'Backend Service', description: 'Backend service configurations' },
+          { label: 'Health Checks',    resourceType: 'Health Check',    description: 'Health check probe configurations' },
+          { label: 'URL Maps',         resourceType: 'URL Map',         description: 'URL map routing rules' },
+          { label: 'HTTP Proxies',     resourceType: 'HTTP Proxy',      description: 'Target HTTP proxy resources' },
+          { label: 'HTTPS Proxies',    resourceType: 'HTTPS Proxy',     description: 'Target HTTPS proxy resources' },
+          { label: 'SSL Certificates', resourceType: 'SSL Certificate', description: 'Managed and self-managed TLS certificates' },
+        ],
+      },
+      {
+        id: 'hybrid-connectivity',
+        label: 'Hybrid Connectivity',
+        icon: 'pi-share-alt',
+        subItems: [
+          { label: 'Interconnects',        resourceType: 'Interconnect',        description: 'Dedicated and partner interconnect attachments' },
+          { label: 'Network Connectivity', resourceType: 'Network Connectivity', description: 'Network Connectivity Center hubs' },
+        ],
+      },
+      { id: 'cloud-dns',       label: 'Cloud DNS',           icon: 'pi-globe',   resourceType: 'Cloud DNS' },
+      { id: 'cloud-cdn',       label: 'Cloud CDN',           icon: 'pi-cloud',   resourceType: 'Cloud CDN' },
+      { id: 'cloud-armor',     label: 'Cloud Armor',         icon: 'pi-shield',  resourceType: 'Cloud Armor' },
+      { id: 'cert-manager',    label: 'Certificate Manager', icon: 'pi-verified',resourceType: 'Certificate Manager' },
+    ],
+  },
+
+  // ── Operations ────────────────────────────────────────────────────────────
+  {
+    section: 'Operations',
+    color: '#10B981',
+    products: [
+      { id: 'cloud-monitoring',   label: 'Cloud Monitoring',            icon: 'pi-chart-line', resourceType: 'Cloud Monitoring' },
+      { id: 'cloud-logging',      label: 'Cloud Logging',               icon: 'pi-list',       resourceType: 'Cloud Logging' },
+      { id: 'cloud-build',        label: 'Cloud Build',                 icon: 'pi-cog',        resourceType: 'Cloud Build' },
+      { id: 'artifact-registry',  label: 'Artifact Registry',          icon: 'pi-box',        resourceType: 'Artifact Registry' },
+      { id: 'cloud-source-repos', label: 'Cloud Source Repositories',  icon: 'pi-code',       resourceType: 'Cloud Source Repositories' },
+    ],
+  },
+
+  // ── Security ──────────────────────────────────────────────────────────────
+  {
+    section: 'Security',
+    color: '#EA4335',
+    products: [
+      { id: 'service-accounts', label: 'Service Accounts',    icon: 'pi-users',  resourceType: 'Service Account' },
+      { id: 'secret-manager',   label: 'Secret Manager',      icon: 'pi-lock',   resourceType: 'Secret Manager' },
+      { id: 'cloud-kms',        label: 'Cloud KMS',           icon: 'pi-key',    resourceType: 'Cloud KMS' },
+      { id: 'binary-auth',      label: 'Binary Authorization',icon: 'pi-shield', resourceType: 'Binary Authorization' },
+    ],
+  },
+
+  // ── Serverless ────────────────────────────────────────────────────────────
+  {
+    section: 'Serverless',
+    color: '#F97316',
+    products: [
+      { id: 'cloud-scheduler',  label: 'Cloud Scheduler',  icon: 'pi-calendar', resourceType: 'Cloud Scheduler' },
+      { id: 'cloud-tasks',      label: 'Cloud Tasks',      icon: 'pi-list',     resourceType: 'Cloud Tasks' },
+      { id: 'api-gateway',      label: 'API Gateway',      icon: 'pi-link',     resourceType: 'API Gateway' },
+      { id: 'cloud-endpoints',  label: 'Cloud Endpoints',  icon: 'pi-share-alt',resourceType: 'Cloud Endpoints' },
+      { id: 'cloud-workflows',  label: 'Cloud Workflows',  icon: 'pi-cog',      resourceType: 'Cloud Workflows' },
+    ],
+  },
+
+  // ── AI & ML ───────────────────────────────────────────────────────────────
+  {
+    section: 'AI & ML',
+    color: '#A855F7',
+    products: [
+      { id: 'vertex-ai',           label: 'Vertex AI',           icon: 'pi-star',      resourceType: 'Vertex AI' },
+      { id: 'vertex-ai-notebooks', label: 'Vertex AI Notebooks', icon: 'pi-book',      resourceType: 'Vertex AI Notebooks' },
+    ],
+  },
+];
+
+// Flat product id → {product, sectionColor} lookup built from GCP_PRODUCT_NAV
+const GCP_PRODUCT_LOOKUP = {};
+GCP_PRODUCT_NAV.forEach((section) => {
+  section.products.forEach((product) => {
+    GCP_PRODUCT_LOOKUP[product.id] = { ...product, sectionColor: section.color };
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GcpResourcesView — Google Cloud Console-style navigation
+// Layout: persistent left sidebar (products) + dynamic right content area.
+//
+// States:
+//   activeProductId = null          → overview / welcome screen
+//   activeProductId set, no subItems → resource table for that product's type
+//   activeProductId set, has subItems, activeResourceType = null
+//                                   → sub-category cards for the product
+//   activeProductId set, has subItems, activeResourceType set
+//                                   → resource table for that sub-item's type
 // ---------------------------------------------------------------------------
 
 function GcpResourcesView() {
   const toast = useRef(null);
-  const [summary, setSummary] = useState([]);   // [{type, count}]
-  const [apiError, setApiError] = useState(null); // real GCP API error (falls back to mock)
-  const [requiredRoles, setRequiredRoles] = useState([]); // roles needed for real data
+
+  // Summary data from the API: [{type, count}, ...]
+  const [summary, setSummary] = useState([]);
+  const [apiError, setApiError] = useState(null);
+  const [requiredRoles, setRequiredRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedService, setSelectedService] = useState(null); // null = overview
+
+  // Navigation state
+  const [activeProductId, setActiveProductId] = useState(null);
+  const [activeResourceType, setActiveResourceType] = useState(null);
+
+  // Sidebar state
+  const [expandedSections, setExpandedSections] = useState(
+    () => new Set(GCP_PRODUCT_NAV.map((s) => s.section)),
+  );
+  const [sidebarSearch, setSidebarSearch] = useState('');
+
+  // Resource table state
   const [serviceResources, setServiceResources] = useState([]);
   const [loadingResources, setLoadingResources] = useState(false);
   const [globalFilter, setGlobalFilter] = useState('');
-  const [serviceSearch, setServiceSearch] = useState('');
 
+  // resource type → count lookup built from summary
+  const countByType = useMemo(() => {
+    const map = {};
+    summary.forEach((s) => { map[s.type] = s.count; });
+    return map;
+  }, [summary]);
+
+  // ── Data fetching ──────────────────────────────────────────────────────────
   useEffect(() => {
     getResourceSummary()
       .then((r) => {
@@ -1136,135 +1374,254 @@ function GcpResourcesView() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleServiceClick = useCallback(async (serviceType) => {
-    setSelectedService(serviceType);
+  const loadResources = useCallback(async (resourceType) => {
+    setActiveResourceType(resourceType);
     setLoadingResources(true);
     setGlobalFilter('');
     try {
-      const res = await getResources([serviceType], null);
+      const res = await getResources([resourceType], null);
       setServiceResources(res.data.resources);
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Failed to load resources');
-      toast.current?.show({
-        severity: 'error',
-        summary: 'Unable to retrieve resources',
-        detail: err?.response?.data?.detail || 'Failed to load resources',
-        life: 15000,
-        sticky: false,
-      });
+      const msg = err?.response?.data?.detail || 'Failed to load resources';
+      setError(msg);
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: msg, life: 15000 });
     } finally {
       setLoadingResources(false);
     }
   }, []);
 
-  const handleBack = useCallback(() => {
-    setSelectedService(null);
-    setServiceResources([]);
+  // ── Navigation handlers ────────────────────────────────────────────────────
+  const handleProductClick = useCallback((product) => {
+    setActiveProductId(product.id);
     setGlobalFilter('');
+    if (product.subItems) {
+      // Products with sub-items show a sub-category card view first
+      setActiveResourceType(null);
+      setServiceResources([]);
+    } else {
+      // Direct products load their resource table immediately
+      loadResources(product.resourceType);
+    }
+  }, [loadResources]);
+
+  const handleSubItemClick = useCallback((e, resourceType) => {
+    e.stopPropagation();
+    loadResources(resourceType);
+  }, [loadResources]);
+
+  const toggleSection = useCallback((sectionName) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionName)) next.delete(sectionName);
+      else next.add(sectionName);
+      return next;
+    });
   }, []);
 
+  // ── Early returns ──────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex justify-content-center align-items-center flex-column gap-3" style={{ minHeight: '300px' }}>
         <ProgressSpinner style={{ width: '50px', height: '50px' }} strokeWidth="4" />
-        <span className="text-sm" style={{ color: '#94a3b8' }}>Loading services…</span>
+        <span className="text-sm" style={{ color: '#94a3b8' }}>Loading GCP resources…</span>
       </div>
     );
   }
 
-  if (error) return (
-    <>
-      <Toast ref={toast} />
-      <Message severity="error" text={error} className="w-full" />
-    </>
-  );
-
-  // --- Drill-down: resources for a specific service ---
-  if (selectedService) {
-    const tableHeader = (
-      <div className="flex justify-content-between align-items-center flex-wrap gap-3"
-           style={{ background: '#1e293b', padding: '0.75rem 1rem' }}>
-        <span className="text-lg font-semibold flex align-items-center gap-2" style={{ color: '#f1f5f9' }}>
-          <i className={`pi ${TYPE_ICON[selectedService] || 'pi-box'}`} style={{ color: '#818cf8' }} />
-          {selectedService}
-          <Badge value={serviceResources.length}
-            style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff' }} />
-        </span>
-        <span className="p-input-icon-left">
-          <i className="pi pi-search" />
-          <InputText
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            placeholder="Search resources…"
-            style={{ borderRadius: '20px' }}
-          />
-        </span>
-      </div>
-    );
-
+  if (error) {
     return (
-      <div className="flex flex-column gap-4">
+      <>
         <Toast ref={toast} />
-        <div className="flex align-items-center gap-2">
-          <Button
-            icon="pi pi-arrow-left"
-            label="Back to Services"
-            className="p-button-text"
-            onClick={handleBack}
-            style={{ color: '#a5b4fc' }}
+        <Message severity="error" text={error} className="w-full" />
+      </>
+    );
+  }
+
+  // ── Derived values ─────────────────────────────────────────────────────────
+  const activeProduct = activeProductId ? GCP_PRODUCT_LOOKUP[activeProductId] : null;
+
+  // Filter sidebar products by the search query
+  const filteredNav = sidebarSearch.trim()
+    ? GCP_PRODUCT_NAV
+        .map((section) => ({
+          ...section,
+          products: section.products.filter((p) => {
+            const q = sidebarSearch.toLowerCase();
+            return (
+              p.label.toLowerCase().includes(q) ||
+              p.subItems?.some((s) => s.label.toLowerCase().includes(q))
+            );
+          }),
+        }))
+        .filter((section) => section.products.length > 0)
+    : GCP_PRODUCT_NAV;
+
+  // ── Sidebar ────────────────────────────────────────────────────────────────
+  const sidebar = (
+    <div style={{
+      width: '280px',
+      flexShrink: 0,
+      background: '#1e293b',
+      borderRadius: '12px',
+      border: '1px solid #334155',
+      display: 'flex',
+      flexDirection: 'column',
+      maxHeight: 'calc(100vh - 160px)',
+    }}>
+      {/* Header + search */}
+      <div style={{ padding: '16px 18px', borderBottom: '1px solid #334155', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+          <i className="pi pi-cloud" style={{ color: '#4285F4', fontSize: '1.1rem' }} />
+          <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '1rem' }}>GCP Console</span>
+        </div>
+        <div style={{ position: 'relative' }}>
+          <i className="pi pi-search" style={{
+            position: 'absolute', left: '10px', top: '50%',
+            transform: 'translateY(-50%)', color: '#64748b',
+            fontSize: '0.85rem', pointerEvents: 'none',
+          }} />
+          <input
+            type="text"
+            value={sidebarSearch}
+            onChange={(e) => setSidebarSearch(e.target.value)}
+            placeholder="Search products…"
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              paddingLeft: '32px', paddingRight: '10px',
+              paddingTop: '7px', paddingBottom: '7px',
+              background: '#0f172a', border: '1px solid #334155',
+              borderRadius: '8px', color: '#e2e8f0',
+              fontSize: '0.88rem', outline: 'none',
+            }}
           />
         </div>
-        {loadingResources ? (
-          <div className="flex justify-content-center align-items-center flex-column gap-2" style={{ minHeight: '200px' }}>
-            <ProgressSpinner style={{ width: '36px', height: '36px' }} strokeWidth="4" />
-            <span className="text-sm" style={{ color: '#94a3b8' }}>Loading resources…</span>
-          </div>
-        ) : (
-          <DataTable
-            value={serviceResources}
-            header={tableHeader}
-            globalFilter={globalFilter}
-            paginator
-            rows={10}
-            rowsPerPageOptions={[10, 25, 50]}
-            sortMode="multiple"
-            removableSort
-            stripedRows
-            emptyMessage={
-              <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
-                <i className="pi pi-inbox text-4xl" />
-                <span>No resources found for {selectedService}.</span>
-              </div>
-            }
-            style={{ borderRadius: '16px', overflow: 'hidden' }}
-          >
-            <Column field="name" header="Name" sortable style={{ minWidth: '160px', fontWeight: 500 }} />
-            <Column field="type" header="Type" body={typeTemplate} sortable style={{ minWidth: '150px' }} />
-            <Column field="region" header="Region" sortable style={{ minWidth: '120px' }} />
-            <Column field="status" header="Status" body={statusTemplate} sortable style={{ minWidth: '110px' }} />
-            <Column header="Configuration" body={detailsTemplate} style={{ minWidth: '260px' }} />
-            <Column field="tags" header="Tags" body={tagsTemplate} style={{ minWidth: '220px' }} />
-          </DataTable>
-        )}
       </div>
-    );
-  }
 
-  // --- Overview: service cards grid ---
-  const filteredSummary = serviceSearch.trim()
-    ? summary.filter((s) => s.type.toLowerCase().includes(serviceSearch.toLowerCase()))
-    : summary;
+      {/* Product list */}
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {filteredNav.map((section) => (
+          <div key={section.section}>
+            {/* Section label — click to collapse/expand */}
+            <div
+              onClick={() => toggleSection(section.section)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px 4px', cursor: 'pointer',
+              }}
+            >
+              <span style={{
+                color: '#475569', fontSize: '0.75rem', fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.07em',
+              }}>
+                {section.section}
+              </span>
+              <i
+                className={`pi ${expandedSections.has(section.section) ? 'pi-chevron-down' : 'pi-chevron-right'}`}
+                style={{ color: '#475569', fontSize: '0.62rem' }}
+              />
+            </div>
 
-  return (
-    <div className="flex flex-column gap-4">
-      <Toast ref={toast} />
-      {/* IAM / API error banner — shown only in mock mode when real GCP call failed */}
+            {expandedSections.has(section.section) && section.products.map((product) => {
+              const isActive = activeProductId === product.id;
+              const productCount = product.subItems
+                ? product.subItems.reduce((acc, s) => acc + (countByType[s.resourceType] || 0), 0)
+                : (countByType[product.resourceType] || 0);
+
+              return (
+                <div key={product.id}>
+                  {/* Product row */}
+                  <div
+                    onClick={() => handleProductClick(product)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '9px 12px 9px 18px', cursor: 'pointer',
+                      background: isActive ? `${section.color}18` : 'transparent',
+                      borderLeft: isActive ? `3px solid ${section.color}` : '3px solid transparent',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = '#ffffff08'; }}
+                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, flex: 1 }}>
+                      <i
+                        className={`pi ${product.icon}`}
+                        style={{ color: isActive ? section.color : '#64748b', fontSize: '0.95rem', flexShrink: 0 }}
+                      />
+                      <span style={{
+                        color: isActive ? '#f1f5f9' : '#94a3b8',
+                        fontSize: '0.92rem', fontWeight: isActive ? 600 : 400,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {product.label}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                      {productCount > 0 && (
+                        <span style={{
+                          background: `${section.color}22`, color: section.color,
+                          borderRadius: '10px', padding: '2px 8px',
+                          fontSize: '0.75rem', fontWeight: 600,
+                        }}>
+                          {productCount}
+                        </span>
+                      )}
+                      {product.subItems && (
+                        <i className="pi pi-chevron-right" style={{ color: '#475569', fontSize: '0.62rem' }} />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sub-items — shown inline under the product when it is active */}
+                  {isActive && product.subItems && product.subItems.map((sub) => {
+                    const isSubActive = activeResourceType === sub.resourceType;
+                    return (
+                      <div
+                        key={sub.resourceType}
+                        onClick={(e) => handleSubItemClick(e, sub.resourceType)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '7px 12px 7px 42px', cursor: 'pointer',
+                          background: isSubActive ? `${section.color}22` : 'transparent',
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={(e) => { if (!isSubActive) e.currentTarget.style.background = '#ffffff08'; }}
+                        onMouseLeave={(e) => { if (!isSubActive) e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <span style={{
+                          color: isSubActive ? '#f1f5f9' : '#64748b',
+                          fontSize: '0.88rem', fontWeight: isSubActive ? 600 : 400,
+                        }}>
+                          {sub.label}
+                        </span>
+                        {(countByType[sub.resourceType] || 0) > 0 && (
+                          <span style={{
+                            background: `${section.color}22`, color: section.color,
+                            borderRadius: '10px', padding: '2px 7px',
+                            fontSize: '0.73rem', fontWeight: 600, flexShrink: 0,
+                          }}>
+                            {countByType[sub.resourceType]}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── Overview panel (no product selected) ──────────────────────────────────
+  const overviewPanel = (
+    <div className="flex flex-column gap-4" style={{ flex: 1, minWidth: 0 }}>
+      {/* IAM / API error banner */}
       {apiError && (
         <div style={{
-          background: '#1e3a5f',
-          border: '1px solid #2563eb',
-          borderRadius: '12px',
-          padding: '1rem 1.2rem',
+          background: '#1e3a5f', border: '1px solid #2563eb',
+          borderRadius: '12px', padding: '1rem 1.2rem',
         }}>
           <div className="flex align-items-start gap-2 mb-2">
             <i className="pi pi-info-circle" style={{ color: '#60a5fa', marginTop: '2px' }} />
@@ -1300,93 +1657,236 @@ function GcpResourcesView() {
           )}
         </div>
       )}
-      <div className="flex align-items-center justify-content-between flex-wrap gap-3">
-        <div className="flex align-items-center gap-2">
-          <i className="pi pi-th-large" style={{ color: '#818cf8', fontSize: '1.2rem' }} />
-          <span className="text-lg font-semibold" style={{ color: '#f1f5f9' }}>
-            All Services
-          </span>
-          <Badge value={filteredSummary.length} style={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', color: '#fff' }} />
+
+      {/* Summary header */}
+      <div style={{
+        background: '#1e293b', border: '1px solid #334155',
+        borderRadius: '16px', padding: '1.5rem',
+      }}>
+        <div className="flex align-items-center gap-3 mb-4">
+          <div style={{
+            width: '48px', height: '48px', borderRadius: '12px',
+            background: 'linear-gradient(135deg,#4285F4,#0F9D58)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 16px #4285F444',
+          }}>
+            <i className="pi pi-cloud" style={{ color: '#fff', fontSize: '1.3rem' }} />
+          </div>
+          <div>
+            <div className="font-bold" style={{ color: '#f1f5f9', fontSize: '1.1rem' }}>
+              Google Cloud Console
+            </div>
+            <div className="text-sm" style={{ color: '#94a3b8' }}>
+              {summary.reduce((acc, s) => acc + (s.count || 0), 0).toLocaleString()} resources
+              across {summary.length} services
+            </div>
+          </div>
         </div>
-        <span className="p-input-icon-left">
-          <i className="pi pi-search" />
-          <InputText
-            value={serviceSearch}
-            onChange={(e) => setServiceSearch(e.target.value)}
-            placeholder="Search services…"
-            style={{ borderRadius: '20px', minWidth: '220px' }}
-          />
+
+        {/* Per-section resource counts */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+          gap: '0.65rem',
+        }}>
+          {GCP_PRODUCT_NAV.map((section) => {
+            const count = section.products.reduce((acc, p) => {
+              if (p.subItems) {
+                return acc + p.subItems.reduce((a, s) => a + (countByType[s.resourceType] || 0), 0);
+              }
+              return acc + (countByType[p.resourceType] || 0);
+            }, 0);
+            if (count === 0) return null;
+            return (
+              <div
+                key={section.section}
+                style={{
+                  background: '#0f172a', border: '1px solid #334155',
+                  borderRadius: '10px', padding: '10px 14px',
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                }}
+              >
+                <span style={{ color: section.color, fontWeight: 700, fontSize: '1rem' }}>
+                  {count}
+                </span>
+                <span style={{ color: '#64748b', fontSize: '0.78rem' }}>{section.section}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ color: '#64748b', fontSize: '0.85rem', textAlign: 'center', padding: '1rem 0' }}>
+        <i className="pi pi-arrow-left mr-2" style={{ fontSize: '0.75rem' }} />
+        Select a product from the left navigation to view resources
+      </div>
+    </div>
+  );
+
+  // ── Sub-category cards panel (product with subItems selected, no sub-item yet) ──
+  const subCategoryPanel = activeProduct?.subItems ? (
+    <div className="flex flex-column gap-4" style={{ flex: 1, minWidth: 0 }}>
+      {/* Product heading */}
+      <div className="flex align-items-center gap-2">
+        <div style={{
+          width: '34px', height: '34px', borderRadius: '8px',
+          background: `${activeProduct.sectionColor}22`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <i className={`pi ${activeProduct.icon}`} style={{ color: activeProduct.sectionColor, fontSize: '0.95rem' }} />
+        </div>
+        <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '1.1rem' }}>
+          {activeProduct.label}
         </span>
       </div>
-      {filteredSummary.length === 0 ? (
-        <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
-          <i className="pi pi-search text-4xl" />
-          <span>No services match "<strong>{serviceSearch}</strong>"</span>
-        </div>
-      ) : (
+
+      {/* Sub-category cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
         gap: '1rem',
       }}>
-        {filteredSummary.map((svc) => {
-          const icon = TYPE_ICON[svc.type] || 'pi-box';
-          const colorIdx = svc.type.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % TYPE_COLORS.length;
-          const color = TYPE_COLORS[colorIdx];
+        {activeProduct.subItems.map((sub) => {
+          const count = countByType[sub.resourceType] || 0;
+          const icon = TYPE_ICON[sub.resourceType] || 'pi-box';
           return (
             <div
-              key={svc.type}
-              onClick={() => handleServiceClick(svc.type)}
+              key={sub.resourceType}
+              onClick={() => loadResources(sub.resourceType)}
               style={{
-                background: '#1e293b',
-                border: '1px solid #334155',
-                borderRadius: '14px',
-                padding: '1.2rem 1rem',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.6rem',
-                transition: 'border-color 0.2s, transform 0.15s',
+                background: '#1e293b', border: '1px solid #334155',
+                borderRadius: '14px', padding: '1.25rem 1.2rem',
+                cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.75rem',
+                transition: 'border-color 0.2s, transform 0.15s, box-shadow 0.2s',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = color;
+                e.currentTarget.style.borderColor = activeProduct.sectionColor;
                 e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = `0 4px 20px ${activeProduct.sectionColor}22`;
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = '#334155';
                 e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
               }}
             >
-              <div className="flex align-items-center gap-2">
+              <div className="flex align-items-center gap-3">
                 <div style={{
-                  width: '36px', height: '36px', borderRadius: '8px',
-                  background: `${color}22`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '42px', height: '42px', borderRadius: '10px',
+                  background: `${activeProduct.sectionColor}22`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}>
-                  <i className={`pi ${icon}`} style={{ color, fontSize: '1.1rem' }} />
+                  <i className={`pi ${icon}`} style={{ color: activeProduct.sectionColor, fontSize: '1.1rem' }} />
                 </div>
-                <span className="font-semibold text-sm" style={{ color: '#f1f5f9', lineHeight: '1.3' }}>
-                  {svc.type}
-                </span>
+                <div>
+                  <div style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.95rem' }}>
+                    {sub.label}
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.78rem', marginTop: '2px' }}>
+                    {sub.description}
+                  </div>
+                </div>
               </div>
               <div className="flex align-items-center justify-content-between">
-                <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Resources</span>
+                <span style={{ color: '#64748b', fontSize: '0.75rem' }}>Resources</span>
                 <span style={{
-                  background: `${color}33`,
-                  color,
-                  borderRadius: '20px',
-                  padding: '2px 10px',
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
+                  background: `${activeProduct.sectionColor}22`,
+                  color: activeProduct.sectionColor,
+                  borderRadius: '20px', padding: '3px 12px',
+                  fontSize: '0.88rem', fontWeight: 700,
                 }}>
-                  {svc.count}
+                  {count}
                 </span>
               </div>
             </div>
           );
         })}
       </div>
+    </div>
+  ) : null;
+
+  // ── Resource table panel ───────────────────────────────────────────────────
+  const tableHeader = (
+    <div
+      className="flex justify-content-between align-items-center flex-wrap gap-3"
+      style={{ background: '#1e293b', padding: '0.75rem 1rem' }}
+    >
+      <span className="text-lg font-semibold flex align-items-center gap-2" style={{ color: '#f1f5f9' }}>
+        <i
+          className={`pi ${TYPE_ICON[activeResourceType] || 'pi-box'}`}
+          style={{ color: activeProduct?.sectionColor || '#4285F4' }}
+        />
+        {activeResourceType}
+        <Badge
+          value={serviceResources.length}
+          style={{ background: 'linear-gradient(135deg,#4285F4,#0F9D58)', color: '#fff' }}
+        />
+      </span>
+      <span className="p-input-icon-left">
+        <i className="pi pi-search" />
+        <InputText
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          placeholder="Search resources…"
+          style={{ borderRadius: '20px' }}
+        />
+      </span>
+    </div>
+  );
+
+  const resourceTablePanel = (
+    <div className="flex flex-column gap-3" style={{ flex: 1, minWidth: 0 }}>
+      {loadingResources ? (
+        <div className="flex justify-content-center align-items-center flex-column gap-2" style={{ minHeight: '300px' }}>
+          <ProgressSpinner style={{ width: '36px', height: '36px' }} strokeWidth="4" />
+          <span className="text-sm" style={{ color: '#94a3b8' }}>Loading resources…</span>
+        </div>
+      ) : (
+        <DataTable
+          value={serviceResources}
+          header={tableHeader}
+          globalFilter={globalFilter}
+          paginator
+          rows={10}
+          rowsPerPageOptions={[10, 25, 50]}
+          sortMode="multiple"
+          removableSort
+          stripedRows
+          dataKey="name"
+          emptyMessage={
+            <div className="flex flex-column align-items-center gap-2 py-6" style={{ color: '#94a3b8' }}>
+              <i className="pi pi-inbox text-4xl" />
+              <span>No resources found for {activeResourceType}.</span>
+            </div>
+          }
+          style={{ borderRadius: '16px', overflow: 'hidden' }}
+        >
+          <Column field="name" header="Name" sortable style={{ minWidth: '160px', fontWeight: 500 }} />
+          <Column field="type" header="Type" body={typeTemplate} sortable style={{ minWidth: '150px' }} />
+          <Column field="region" header="Region / Zone" sortable style={{ minWidth: '120px' }} />
+          <Column field="status" header="Status" body={statusTemplate} sortable style={{ minWidth: '110px' }} />
+          <Column header="Configuration" body={detailsTemplate} style={{ minWidth: '260px' }} />
+          <Column field="tags" header="Labels" body={tagsTemplate} style={{ minWidth: '220px' }} />
+        </DataTable>
       )}
+    </div>
+  );
+
+  // ── Determine which main content panel to show ────────────────────────────
+  let mainContent;
+  if (!activeProduct) {
+    mainContent = overviewPanel;
+  } else if (activeProduct.subItems && !activeResourceType) {
+    mainContent = subCategoryPanel;
+  } else {
+    mainContent = resourceTablePanel;
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+      <Toast ref={toast} />
+      {sidebar}
+      {mainContent}
     </div>
   );
 }
