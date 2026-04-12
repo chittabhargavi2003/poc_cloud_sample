@@ -1105,6 +1105,7 @@ export default function ResourcesView({ provider }) {
 // single resourceType, or have subItems (shown inline in the sidebar when the
 // product is selected) that each map to a resourceType.
 const GCP_PRODUCT_NAV = [
+  // ── Compute ──────────────────────────────────────────────────────────────
   {
     section: 'Compute',
     color: '#4285F4',
@@ -1114,46 +1115,89 @@ const GCP_PRODUCT_NAV = [
         label: 'Compute Engine',
         icon: 'pi-server',
         subItems: [
-          { label: 'VM Instances', resourceType: 'Compute Engine', description: 'Running and stopped virtual machine instances' },
-          { label: 'Disks', resourceType: 'Persistent Disk', description: 'Persistent block storage volumes' },
+          { label: 'VM Instances',       resourceType: 'Compute Engine',    description: 'Running and stopped virtual machine instances' },
+          { label: 'Disks',              resourceType: 'Persistent Disk',   description: 'Persistent block storage volumes attached to VMs' },
+          { label: 'Snapshots',          resourceType: 'Disk Snapshot',     description: 'Point-in-time snapshots of persistent disks' },
+          { label: 'Images',             resourceType: 'Compute Image',     description: 'Custom OS images for VM creation' },
+          { label: 'Instance Templates', resourceType: 'Instance Template', description: 'Reusable VM configuration templates' },
+          { label: 'Instance Groups',    resourceType: 'Instance Group',    description: 'Managed and unmanaged instance groups' },
+          { label: 'Autoscalers',        resourceType: 'Autoscaler',        description: 'Automatic scaling policies for instance groups' },
         ],
       },
       { id: 'gke', label: 'Kubernetes Engine', icon: 'pi-sitemap', resourceType: 'GKE' },
-      { id: 'app-engine', label: 'App Engine', icon: 'pi-globe', resourceType: 'App Engine' },
-      { id: 'cloud-run', label: 'Cloud Run', icon: 'pi-forward', resourceType: 'Cloud Run' },
-      { id: 'cloud-functions', label: 'Cloud Functions', icon: 'pi-bolt', resourceType: 'Cloud Functions' },
+      {
+        id: 'app-engine',
+        label: 'App Engine',
+        icon: 'pi-globe',
+        subItems: [
+          { label: 'Applications', resourceType: 'App Engine',         description: 'App Engine applications in this project' },
+          { label: 'Services',     resourceType: 'App Engine Service', description: 'App Engine services and versions' },
+        ],
+      },
+      { id: 'cloud-run',       label: 'Cloud Run',       icon: 'pi-forward', resourceType: 'Cloud Run' },
+      { id: 'cloud-functions', label: 'Cloud Functions', icon: 'pi-bolt',    resourceType: 'Cloud Functions' },
     ],
   },
+
+  // ── Storage ───────────────────────────────────────────────────────────────
   {
     section: 'Storage',
     color: '#0F9D58',
     products: [
       { id: 'cloud-storage', label: 'Cloud Storage', icon: 'pi-database', resourceType: 'Cloud Storage' },
-      { id: 'filestore', label: 'Filestore', icon: 'pi-folder', resourceType: 'Filestore' },
+      { id: 'filestore',     label: 'Filestore',     icon: 'pi-folder',   resourceType: 'Filestore' },
     ],
   },
+
+  // ── Databases ─────────────────────────────────────────────────────────────
   {
     section: 'Databases',
     color: '#DB4437',
     products: [
-      { id: 'cloud-sql', label: 'Cloud SQL', icon: 'pi-database', resourceType: 'Cloud SQL' },
-      { id: 'cloud-spanner', label: 'Cloud Spanner', icon: 'pi-table', resourceType: 'Cloud Spanner' },
-      { id: 'firestore-db', label: 'Firestore', icon: 'pi-file', resourceType: 'Firestore' },
-      { id: 'cloud-bigtable', label: 'Cloud Bigtable', icon: 'pi-table', resourceType: 'Cloud Bigtable' },
-      { id: 'memorystore', label: 'Memorystore', icon: 'pi-refresh', resourceType: 'Cloud Memorystore' },
+      { id: 'cloud-sql',     label: 'Cloud SQL',     icon: 'pi-database', resourceType: 'Cloud SQL' },
+      { id: 'cloud-spanner', label: 'Cloud Spanner', icon: 'pi-table',    resourceType: 'Cloud Spanner' },
+      { id: 'firestore-db',  label: 'Firestore',     icon: 'pi-file',     resourceType: 'Firestore' },
+      { id: 'cloud-bigtable',label: 'Cloud Bigtable',icon: 'pi-table',    resourceType: 'Cloud Bigtable' },
+      { id: 'memorystore',   label: 'Memorystore',   icon: 'pi-refresh',  resourceType: 'Cloud Memorystore' },
+      { id: 'alloydb',       label: 'AlloyDB',       icon: 'pi-database', resourceType: 'AlloyDB' },
     ],
   },
+
+  // ── Analytics ─────────────────────────────────────────────────────────────
   {
     section: 'Analytics',
     color: '#F4B400',
     products: [
-      { id: 'bigquery', label: 'BigQuery', icon: 'pi-chart-bar', resourceType: 'BigQuery' },
-      { id: 'dataflow', label: 'Dataflow', icon: 'pi-sort-alt', resourceType: 'Dataflow' },
-      { id: 'dataproc', label: 'Dataproc', icon: 'pi-share-alt', resourceType: 'Dataproc' },
-      { id: 'pub-sub', label: 'Pub/Sub', icon: 'pi-send', resourceType: 'Pub/Sub' },
-      { id: 'composer', label: 'Cloud Composer', icon: 'pi-cog', resourceType: 'Cloud Composer' },
+      {
+        id: 'bigquery',
+        label: 'BigQuery',
+        icon: 'pi-chart-bar',
+        subItems: [
+          { label: 'Datasets',     resourceType: 'BigQuery',             description: 'BigQuery datasets in this project' },
+          { label: 'Tables',       resourceType: 'BigQuery Table',       description: 'BigQuery tables and views' },
+          { label: 'Reservations', resourceType: 'BigQuery Reservation', description: 'BigQuery capacity reservations' },
+        ],
+      },
+      {
+        id: 'pub-sub',
+        label: 'Pub/Sub',
+        icon: 'pi-send',
+        subItems: [
+          { label: 'Topics',        resourceType: 'Pub/Sub',              description: 'Pub/Sub topics' },
+          { label: 'Subscriptions', resourceType: 'Pub/Sub Subscription', description: 'Pub/Sub push and pull subscriptions' },
+          { label: 'Lite Topics',   resourceType: 'Pub/Sub Lite',         description: 'Pub/Sub Lite low-cost topics' },
+        ],
+      },
+      { id: 'dataflow',    label: 'Dataflow',          icon: 'pi-sort-alt',  resourceType: 'Dataflow' },
+      { id: 'dataproc',    label: 'Dataproc',          icon: 'pi-share-alt', resourceType: 'Dataproc' },
+      { id: 'composer',    label: 'Cloud Composer',    icon: 'pi-cog',       resourceType: 'Cloud Composer' },
+      { id: 'dataform',    label: 'Dataform',          icon: 'pi-file-edit', resourceType: 'Dataform' },
+      { id: 'dataplex',    label: 'Dataplex',          icon: 'pi-sitemap',   resourceType: 'Dataplex' },
+      { id: 'data-fusion', label: 'Cloud Data Fusion', icon: 'pi-sync',      resourceType: 'Cloud Data Fusion' },
     ],
   },
+
+  // ── Networking ────────────────────────────────────────────────────────────
   {
     section: 'Networking',
     color: '#8B5CF6',
@@ -1163,49 +1207,92 @@ const GCP_PRODUCT_NAV = [
         label: 'VPC Network',
         icon: 'pi-sitemap',
         subItems: [
-          { label: 'VPC Networks', resourceType: 'VPC Network', description: 'Your virtual private cloud networks' },
-          { label: 'Firewall Rules', resourceType: 'Firewall Rule', description: 'Ingress and egress firewall rules' },
-          { label: 'Load Balancers', resourceType: 'Load Balancer', description: 'HTTP(S), SSL, and TCP load balancers' },
-          { label: 'IP Addresses', resourceType: 'IP Address', description: 'Reserved IP address resources' },
+          { label: 'VPC Networks',       resourceType: 'VPC Network',         description: 'Your virtual private cloud networks' },
+          { label: 'Subnets',            resourceType: 'Subnet',              description: 'Subnetworks within your VPCs' },
+          { label: 'Firewall Rules',     resourceType: 'Firewall Rule',       description: 'Ingress and egress firewall rules' },
+          { label: 'Routes',             resourceType: 'Route',               description: 'Custom routing rules for VPC traffic' },
+          { label: 'Cloud Router',       resourceType: 'Cloud Router',        description: 'Dynamic routing for VPC networks' },
+          { label: 'VPN Gateways',       resourceType: 'VPN Gateway',         description: 'Classic and HA VPN gateways' },
+          { label: 'VPN Tunnels',        resourceType: 'VPN Tunnel',          description: 'Encrypted VPN tunnels' },
+          { label: 'VPC Connectors',     resourceType: 'VPC Connector',       description: 'Serverless VPC access connectors' },
+          { label: 'IP Addresses',       resourceType: 'IP Address',          description: 'Reserved external and internal IPs' },
         ],
       },
-      { id: 'cloud-dns', label: 'Cloud DNS', icon: 'pi-globe', resourceType: 'Cloud DNS' },
-      { id: 'cloud-cdn', label: 'Cloud CDN', icon: 'pi-cloud', resourceType: 'Cloud CDN' },
+      {
+        id: 'load-balancing',
+        label: 'Load Balancing',
+        icon: 'pi-arrows-h',
+        subItems: [
+          { label: 'Load Balancers',   resourceType: 'Load Balancer',   description: 'HTTP(S), SSL, and TCP load balancers' },
+          { label: 'Backend Services', resourceType: 'Backend Service', description: 'Backend service configurations' },
+          { label: 'Health Checks',    resourceType: 'Health Check',    description: 'Health check probe configurations' },
+          { label: 'URL Maps',         resourceType: 'URL Map',         description: 'URL map routing rules' },
+          { label: 'HTTP Proxies',     resourceType: 'HTTP Proxy',      description: 'Target HTTP proxy resources' },
+          { label: 'HTTPS Proxies',    resourceType: 'HTTPS Proxy',     description: 'Target HTTPS proxy resources' },
+          { label: 'SSL Certificates', resourceType: 'SSL Certificate', description: 'Managed and self-managed TLS certificates' },
+        ],
+      },
+      {
+        id: 'hybrid-connectivity',
+        label: 'Hybrid Connectivity',
+        icon: 'pi-share-alt',
+        subItems: [
+          { label: 'Interconnects',        resourceType: 'Interconnect',        description: 'Dedicated and partner interconnect attachments' },
+          { label: 'Network Connectivity', resourceType: 'Network Connectivity', description: 'Network Connectivity Center hubs' },
+        ],
+      },
+      { id: 'cloud-dns',       label: 'Cloud DNS',           icon: 'pi-globe',   resourceType: 'Cloud DNS' },
+      { id: 'cloud-cdn',       label: 'Cloud CDN',           icon: 'pi-cloud',   resourceType: 'Cloud CDN' },
+      { id: 'cloud-armor',     label: 'Cloud Armor',         icon: 'pi-shield',  resourceType: 'Cloud Armor' },
+      { id: 'cert-manager',    label: 'Certificate Manager', icon: 'pi-verified',resourceType: 'Certificate Manager' },
     ],
   },
+
+  // ── Operations ────────────────────────────────────────────────────────────
   {
     section: 'Operations',
     color: '#10B981',
     products: [
-      { id: 'cloud-monitoring', label: 'Cloud Monitoring', icon: 'pi-chart-line', resourceType: 'Cloud Monitoring' },
-      { id: 'cloud-logging', label: 'Cloud Logging', icon: 'pi-list', resourceType: 'Cloud Logging' },
-      { id: 'cloud-build', label: 'Cloud Build', icon: 'pi-cog', resourceType: 'Cloud Build' },
-      { id: 'artifact-registry', label: 'Artifact Registry', icon: 'pi-box', resourceType: 'Artifact Registry' },
+      { id: 'cloud-monitoring',   label: 'Cloud Monitoring',            icon: 'pi-chart-line', resourceType: 'Cloud Monitoring' },
+      { id: 'cloud-logging',      label: 'Cloud Logging',               icon: 'pi-list',       resourceType: 'Cloud Logging' },
+      { id: 'cloud-build',        label: 'Cloud Build',                 icon: 'pi-cog',        resourceType: 'Cloud Build' },
+      { id: 'artifact-registry',  label: 'Artifact Registry',          icon: 'pi-box',        resourceType: 'Artifact Registry' },
+      { id: 'cloud-source-repos', label: 'Cloud Source Repositories',  icon: 'pi-code',       resourceType: 'Cloud Source Repositories' },
     ],
   },
+
+  // ── Security ──────────────────────────────────────────────────────────────
   {
     section: 'Security',
     color: '#EA4335',
     products: [
-      { id: 'service-accounts', label: 'Service Accounts', icon: 'pi-users', resourceType: 'Service Account' },
-      { id: 'secret-manager', label: 'Secret Manager', icon: 'pi-lock', resourceType: 'Secret Manager' },
-      { id: 'cloud-kms', label: 'Cloud KMS', icon: 'pi-key', resourceType: 'Cloud KMS' },
+      { id: 'service-accounts', label: 'Service Accounts',    icon: 'pi-users',  resourceType: 'Service Account' },
+      { id: 'secret-manager',   label: 'Secret Manager',      icon: 'pi-lock',   resourceType: 'Secret Manager' },
+      { id: 'cloud-kms',        label: 'Cloud KMS',           icon: 'pi-key',    resourceType: 'Cloud KMS' },
+      { id: 'binary-auth',      label: 'Binary Authorization',icon: 'pi-shield', resourceType: 'Binary Authorization' },
     ],
   },
+
+  // ── Serverless ────────────────────────────────────────────────────────────
   {
     section: 'Serverless',
     color: '#F97316',
     products: [
-      { id: 'cloud-scheduler', label: 'Cloud Scheduler', icon: 'pi-calendar', resourceType: 'Cloud Scheduler' },
-      { id: 'cloud-tasks', label: 'Cloud Tasks', icon: 'pi-list', resourceType: 'Cloud Tasks' },
-      { id: 'api-gateway', label: 'API Gateway', icon: 'pi-link', resourceType: 'API Gateway' },
+      { id: 'cloud-scheduler',  label: 'Cloud Scheduler',  icon: 'pi-calendar', resourceType: 'Cloud Scheduler' },
+      { id: 'cloud-tasks',      label: 'Cloud Tasks',      icon: 'pi-list',     resourceType: 'Cloud Tasks' },
+      { id: 'api-gateway',      label: 'API Gateway',      icon: 'pi-link',     resourceType: 'API Gateway' },
+      { id: 'cloud-endpoints',  label: 'Cloud Endpoints',  icon: 'pi-share-alt',resourceType: 'Cloud Endpoints' },
+      { id: 'cloud-workflows',  label: 'Cloud Workflows',  icon: 'pi-cog',      resourceType: 'Cloud Workflows' },
     ],
   },
+
+  // ── AI & ML ───────────────────────────────────────────────────────────────
   {
     section: 'AI & ML',
     color: '#A855F7',
     products: [
-      { id: 'vertex-ai', label: 'Vertex AI', icon: 'pi-star', resourceType: 'Vertex AI' },
+      { id: 'vertex-ai',           label: 'Vertex AI',           icon: 'pi-star',      resourceType: 'Vertex AI' },
+      { id: 'vertex-ai-notebooks', label: 'Vertex AI Notebooks', icon: 'pi-book',      resourceType: 'Vertex AI Notebooks' },
     ],
   },
 ];
